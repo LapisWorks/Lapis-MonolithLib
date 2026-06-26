@@ -5,7 +5,12 @@ plugins {
 }
 
 group = "mc506lw"
-version = "1.0"
+
+val monolithVersion: String by project
+val rebarVersion: String by project
+val minecraftVersion: String by project
+
+version = monolithVersion
 
 repositories {
     mavenCentral()
@@ -22,8 +27,8 @@ repositories {
 }
 
 dependencies {
-    compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
-    compileOnly("io.github.pylonmc:rebar:0.36.2")
+    compileOnly("io.papermc.paper:paper-api:${minecraftVersion}.build.+")
+    compileOnly("io.github.pylonmc:rebar:$rebarVersion")
     compileOnly("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
 }
 
@@ -45,15 +50,8 @@ tasks.shadowJar {
     exclude("META-INF/services/kotlin.*")
 }
 
-tasks.register<Copy>("copyToServer") {
-    from(tasks.shadowJar)
-    into("D:\\我的世界资源库\\服务器\\岚域3.0\\plugins")
-    outputs.upToDateWhen { false }
-}
-
 tasks.build {
     dependsOn("shadowJar")
-    finalizedBy("copyToServer")
 }
 
 tasks.processResources {
