@@ -9,6 +9,7 @@ group = "mc506lw"
 val monolithVersion: String by project
 val rebarVersion: String by project
 val minecraftVersion: String by project
+val javaVersion: String by project
 
 version = monolithVersion
 
@@ -32,15 +33,8 @@ dependencies {
     compileOnly("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
 }
 
-tasks {
-    runServer {
-        minecraftVersion("1.21")
-    }
-}
-
-val targetJavaVersion = 21
 kotlin {
-    jvmToolchain(targetJavaVersion)
+    jvmToolchain(javaVersion.toInt())
 }
 
 tasks.shadowJar {
