@@ -8,7 +8,7 @@ import top.mc506lw.monolith.common.I18n
 import top.mc506lw.monolith.core.model.Blueprint
 import top.mc506lw.monolith.core.transform.CoordinateTransform
 import top.mc506lw.monolith.core.transform.Facing
-import top.mc506lw.rebar.MonolithLib
+import top.mc506lw.monolith.MonolithLib
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 

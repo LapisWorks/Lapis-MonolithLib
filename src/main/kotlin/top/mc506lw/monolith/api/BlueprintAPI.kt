@@ -7,7 +7,7 @@ import top.mc506lw.monolith.core.model.Blueprint
 import top.mc506lw.monolith.core.transform.Facing
 import top.mc506lw.monolith.feature.buildsite.BuildSite
 import top.mc506lw.monolith.feature.buildsite.BuildSiteManager
-import top.mc506lw.rebar.MonolithLib
+import top.mc506lw.monolith.MonolithLib
 import java.util.logging.Logger
 
 class BlueprintAPI : MonolithAPI {

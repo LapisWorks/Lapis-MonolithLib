@@ -1,10 +1,10 @@
 package top.mc506lw.monolith.feature.machine
 
 import io.github.pylonmc.rebar.block.RebarBlock
-import io.github.pylonmc.rebar.block.base.RebarBreakHandler
-import io.github.pylonmc.rebar.block.base.RebarEntityHolderBlock
-import io.github.pylonmc.rebar.block.base.RebarGuiBlock
-import io.github.pylonmc.rebar.block.base.RebarVirtualInventoryBlock
+import io.github.pylonmc.rebar.block.interfaces.BlockBreakRebarBlockHandler
+import io.github.pylonmc.rebar.block.interfaces.EntityHolderRebarBlock
+import io.github.pylonmc.rebar.block.interfaces.GuiRebarBlock
+import io.github.pylonmc.rebar.block.interfaces.VirtualInventoryRebarBlock
 import io.github.pylonmc.rebar.block.context.BlockBreakContext
 import io.github.pylonmc.rebar.block.context.BlockCreateContext
 import io.github.pylonmc.rebar.entity.display.BlockDisplayBuilder
@@ -22,7 +22,7 @@ import org.bukkit.persistence.PersistentDataContainer
 import org.bukkit.persistence.PersistentDataType
 import top.mc506lw.monolith.api.MonolithAPI
 import top.mc506lw.monolith.core.model.Blueprint
-import top.mc506lw.rebar.MonolithLib
+import top.mc506lw.monolith.MonolithLib
 import xyz.xenondevs.invui.Click
 import xyz.xenondevs.invui.gui.Gui
 import xyz.xenondevs.invui.item.AbstractItem
@@ -34,9 +34,9 @@ import xyz.xenondevs.invui.inventory.event.UpdateReason
 class BlueprintTableBlock(
     block: Block,
     context: BlockCreateContext
-) : RebarBlock(block, context), RebarEntityHolderBlock, RebarGuiBlock, RebarVirtualInventoryBlock, RebarBreakHandler {
+) : RebarBlock(block, context), EntityHolderRebarBlock, GuiRebarBlock, VirtualInventoryRebarBlock, BlockBreakRebarBlockHandler {
 
-    constructor(block: Block, pdc: PersistentDataContainer) : this(block, BlockCreateContext.Default(block))
+    constructor(block: Block, pdc: PersistentDataContainer) : this(block, BlockCreateContext.Default(block = block))
 
     override var disableBlockTextureEntity = true
 
@@ -276,8 +276,8 @@ class BlueprintTableBlock(
         }
     }
 
-    override fun onBreak(drops: MutableList<ItemStack>, context: BlockBreakContext) {
-        super<RebarVirtualInventoryBlock>.onBreak(drops, context)
+    override fun onBlockBreak(drops: MutableList<ItemStack>, context: BlockBreakContext) {
+        super<VirtualInventoryRebarBlock>.onBlockBreak(drops, context)
         tryRemoveAllEntities()
     }
 }

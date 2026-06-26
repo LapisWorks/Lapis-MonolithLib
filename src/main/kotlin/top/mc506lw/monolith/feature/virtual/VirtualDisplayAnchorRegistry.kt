@@ -3,7 +3,7 @@ package top.mc506lw.monolith.feature.virtual
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import top.mc506lw.monolith.common.MonolithLogger
-import top.mc506lw.rebar.MonolithLib
+import top.mc506lw.monolith.MonolithLib
 import io.github.pylonmc.rebar.block.RebarBlock
 import io.github.pylonmc.rebar.item.RebarItem
 import io.github.pylonmc.rebar.item.builder.ItemStackBuilder

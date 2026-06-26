@@ -12,7 +12,7 @@ import top.mc506lw.monolith.feature.buildsite.BuildSite
 import top.mc506lw.monolith.feature.buildsite.BuildSiteManager
 import top.mc506lw.monolith.feature.preview.PreviewSession
 import top.mc506lw.monolith.feature.preview.StructurePreviewManager
-import top.mc506lw.rebar.MonolithLib
+import top.mc506lw.monolith.MonolithLib
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 

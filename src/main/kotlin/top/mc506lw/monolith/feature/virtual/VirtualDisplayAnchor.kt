@@ -1,8 +1,8 @@
 package top.mc506lw.monolith.feature.virtual
 
 import io.github.pylonmc.rebar.block.RebarBlock
-import io.github.pylonmc.rebar.block.base.RebarBreakHandler
-import io.github.pylonmc.rebar.block.base.RebarEntityHolderBlock
+import io.github.pylonmc.rebar.block.interfaces.BlockBreakRebarBlockHandler
+import io.github.pylonmc.rebar.block.interfaces.EntityHolderRebarBlock
 import io.github.pylonmc.rebar.block.context.BlockBreakContext
 import io.github.pylonmc.rebar.block.context.BlockCreateContext
 import org.bukkit.Material
@@ -11,14 +11,14 @@ import org.bukkit.block.Block
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataContainer
 import top.mc506lw.monolith.common.MonolithLogger
-import top.mc506lw.rebar.MonolithLib
+import top.mc506lw.monolith.MonolithLib
 
 class VirtualDisplayAnchor(
     block: Block,
     context: BlockCreateContext
-) : RebarBlock(block, context), RebarEntityHolderBlock, RebarBreakHandler {
+) : RebarBlock(block, context), EntityHolderRebarBlock, BlockBreakRebarBlockHandler {
 
-    constructor(block: Block, pdc: PersistentDataContainer) : this(block, BlockCreateContext.Default(block))
+    constructor(block: Block, pdc: PersistentDataContainer) : this(block, BlockCreateContext.Default(block = block))
 
     companion object {
         val KEY = NamespacedKey(MonolithLib.instance, "virtual_display_anchor")
@@ -32,7 +32,7 @@ class VirtualDisplayAnchor(
 
     override var disableBlockTextureEntity = true
 
-    override fun onBreak(drops: MutableList<ItemStack>, context: BlockBreakContext) {
+    override fun onBlockBreak(drops: MutableList<ItemStack>, context: BlockBreakContext) {
         drops.clear()
         tryRemoveAllEntities()
     }

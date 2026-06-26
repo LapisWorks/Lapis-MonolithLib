@@ -1,7 +1,7 @@
 package top.mc506lw.monolith.integration
 
 import io.github.pylonmc.rebar.block.RebarBlock
-import io.github.pylonmc.rebar.block.base.RebarMultiblock
+import io.github.pylonmc.rebar.block.interfaces.RebarMultiblock
 import io.github.pylonmc.rebar.util.position.ChunkPosition
 import io.github.pylonmc.rebar.util.position.position
 import org.bukkit.block.Block

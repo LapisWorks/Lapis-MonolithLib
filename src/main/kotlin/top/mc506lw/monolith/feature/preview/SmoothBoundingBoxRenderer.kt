@@ -13,7 +13,7 @@ import org.bukkit.util.Transformation
 import org.joml.AxisAngle4f
 import org.joml.Vector3f
 import top.mc506lw.monolith.core.math.Vector3i
-import top.mc506lw.rebar.MonolithLib
+import top.mc506lw.monolith.MonolithLib
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 

@@ -90,6 +90,6 @@ class BlueprintLifecycle(
     }
     
     private fun submitMainThread(action: () -> Unit) {
-        Bukkit.getScheduler().runTask(top.mc506lw.rebar.MonolithLib.instance, action)
+        Bukkit.getScheduler().runTask(top.mc506lw.monolith.MonolithLib.instance, action)
     }
 }

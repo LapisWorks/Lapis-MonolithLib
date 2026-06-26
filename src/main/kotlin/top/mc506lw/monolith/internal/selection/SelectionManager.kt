@@ -11,7 +11,7 @@ import org.bukkit.scheduler.BukkitTask
 import top.mc506lw.monolith.common.I18n
 import top.mc506lw.monolith.core.math.Vector3i
 import top.mc506lw.monolith.feature.preview.SmoothBoundingBoxRenderer
-import top.mc506lw.rebar.MonolithLib
+import top.mc506lw.monolith.MonolithLib
 import java.util.UUID
 
 data class PlayerSelection(

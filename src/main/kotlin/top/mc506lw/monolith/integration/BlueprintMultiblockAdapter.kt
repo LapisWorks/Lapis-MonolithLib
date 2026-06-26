@@ -1,7 +1,7 @@
 package top.mc506lw.monolith.integration
 
 import io.github.pylonmc.rebar.block.BlockStorage
-import io.github.pylonmc.rebar.block.base.RebarSimpleMultiblock
+import io.github.pylonmc.rebar.block.interfaces.SimpleRebarMultiblock
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Material
@@ -119,9 +119,8 @@ class BlueprintMultiblockAdapter(
         val blockData: BlockData,
         val material: Material,
         val isControllerPos: Boolean = false
-    ) : RebarSimpleMultiblock.MultiblockComponent {
-        
-        override fun matches(block: Block): Boolean {
+    ) {
+        fun matches(block: Block): Boolean {
             if (isControllerPos && BlockStorage.isRebarBlock(block)) {
                 return true
             }
@@ -133,10 +132,12 @@ class BlueprintMultiblockAdapter(
             return block.type == material
         }
         
-        override fun placeDefaultBlock(block: Block) {
+        fun placeDefaultBlock(player: org.bukkit.entity.Player?, block: Block): Boolean {
             if (block.type.isAir && !BlockStorage.isRebarBlock(block)) {
                 block.blockData = blockData
+                return true
             }
+            return false
         }
     }
     

@@ -15,7 +15,7 @@ import org.bukkit.util.Transformation
 import org.joml.AxisAngle4f
 import org.joml.Vector3f
 import top.mc506lw.monolith.feature.preview.SmoothBoundingBoxRenderer
-import top.mc506lw.rebar.MonolithLib
+import top.mc506lw.monolith.MonolithLib
 import top.mc506lw.monolith.common.I18n
 import top.mc506lw.monolith.common.MonolithLogger
 import top.mc506lw.monolith.core.math.Vector3i

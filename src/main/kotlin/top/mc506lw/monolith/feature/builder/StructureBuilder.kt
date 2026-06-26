@@ -16,7 +16,7 @@ import top.mc506lw.monolith.validation.predicate.RotatedPredicate
 import top.mc506lw.monolith.core.transform.BlockStateRotator
 import top.mc506lw.monolith.core.transform.CoordinateTransform
 import top.mc506lw.monolith.core.transform.Facing
-import top.mc506lw.rebar.MonolithLib
+import top.mc506lw.monolith.MonolithLib
 
 class StructureBuilder(
     private val player: Player,

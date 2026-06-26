@@ -16,7 +16,7 @@ import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
 import top.mc506lw.monolith.common.I18n
 import top.mc506lw.monolith.core.math.Vector3i
-import top.mc506lw.rebar.MonolithLib
+import top.mc506lw.monolith.MonolithLib
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 

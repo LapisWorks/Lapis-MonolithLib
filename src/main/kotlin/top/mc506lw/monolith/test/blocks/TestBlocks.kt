@@ -1,8 +1,8 @@
 package top.mc506lw.monolith.test.blocks
 
 import io.github.pylonmc.rebar.block.RebarBlock
-import io.github.pylonmc.rebar.block.base.RebarBreakHandler
-import io.github.pylonmc.rebar.block.base.RebarMultiblock
+import io.github.pylonmc.rebar.block.interfaces.BlockBreakRebarBlockHandler
+import io.github.pylonmc.rebar.block.interfaces.RebarMultiblock
 import io.github.pylonmc.rebar.block.context.BlockBreakContext
 import io.github.pylonmc.rebar.block.context.BlockCreateContext
 import io.github.pylonmc.rebar.item.RebarItem
@@ -19,7 +19,7 @@ import top.mc506lw.monolith.common.MonolithLogger
 import top.mc506lw.monolith.core.math.Vector3i
 import top.mc506lw.monolith.core.transform.Facing
 import top.mc506lw.monolith.integration.BlueprintMultiblockAdapter
-import top.mc506lw.rebar.MonolithLib
+import top.mc506lw.monolith.MonolithLib
 
 object TestBlocks {
 
@@ -48,7 +48,7 @@ class TestControllerBlock(
     context: BlockCreateContext
 ) : RebarBlock(block, context) {
     
-    constructor(block: Block, pdc: PersistentDataContainer) : this(block, BlockCreateContext.Default(block))
+    constructor(block: Block, pdc: PersistentDataContainer) : this(block, BlockCreateContext.Default(block = block))
     
     companion object {
         val KEY = NamespacedKey(MonolithLib.instance, "test_controller")
@@ -61,7 +61,7 @@ class FurnaceCoreBlock(
     context: BlockCreateContext
 ) : RebarBlock(block, context) {
     
-    constructor(block: Block, pdc: PersistentDataContainer) : this(block, BlockCreateContext.Default(block))
+    constructor(block: Block, pdc: PersistentDataContainer) : this(block, BlockCreateContext.Default(block = block))
     
     companion object {
         val KEY = NamespacedKey(MonolithLib.instance, "furnace_core")
@@ -74,7 +74,7 @@ class MachineCoreBlock(
     context: BlockCreateContext
 ) : RebarBlock(block, context) {
     
-    constructor(block: Block, pdc: PersistentDataContainer) : this(block, BlockCreateContext.Default(block))
+    constructor(block: Block, pdc: PersistentDataContainer) : this(block, BlockCreateContext.Default(block = block))
     
     companion object {
         val KEY = NamespacedKey(MonolithLib.instance, "machine_core")
@@ -85,7 +85,7 @@ class MachineCoreBlock(
 class CustomStructureController(
     block: Block,
     context: BlockCreateContext
-) : RebarBlock(block, context), RebarMultiblock, RebarBreakHandler {
+) : RebarBlock(block, context), RebarMultiblock, BlockBreakRebarBlockHandler {
     
     private val blueprintId = "custom_controller"
     
@@ -97,7 +97,7 @@ class CustomStructureController(
         BlueprintMultiblockAdapter(blueprint, block.location, facing)
     }
     
-    constructor(block: Block, pdc: PersistentDataContainer) : this(block, BlockCreateContext.Default(block))
+    constructor(block: Block, pdc: PersistentDataContainer) : this(block, BlockCreateContext.Default(block = block))
     
     protected open fun detectFacing(): Facing {
         return Facing.EAST
@@ -139,7 +139,7 @@ class CustomStructureController(
         return adapter.components.containsKey(relativePos)
     }
     
-    override fun onBreak(drops: MutableList<ItemStack>, context: BlockBreakContext) {
+    override fun onBlockBreak(drops: MutableList<ItemStack>, context: BlockBreakContext) {
         drops.clear()
 
         val rebarItem = io.github.pylonmc.rebar.item.builder.ItemStackBuilder

@@ -1,7 +1,7 @@
 package top.mc506lw.monolith.internal.selection
 
 import io.github.pylonmc.rebar.item.RebarItem
-import io.github.pylonmc.rebar.item.base.RebarBlockInteractor
+import io.github.pylonmc.rebar.item.interfaces.BlockInteractRebarItemHandler
 import io.github.pylonmc.rebar.item.builder.ItemStackBuilder
 import net.kyori.adventure.text.Component
 import org.bukkit.Material
@@ -10,11 +10,11 @@ import org.bukkit.event.EventPriority
 import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEvent
 import top.mc506lw.monolith.common.I18n
-import top.mc506lw.rebar.MonolithLib
+import top.mc506lw.monolith.MonolithLib
 
-class SelectionWand(stack: org.bukkit.inventory.ItemStack) : RebarItem(stack), RebarBlockInteractor {
+class SelectionWand(stack: org.bukkit.inventory.ItemStack) : RebarItem(stack), BlockInteractRebarItemHandler {
 
-    override fun onUsedToClickBlock(event: PlayerInteractEvent, priority: EventPriority) {
+    override fun onInteractWithBlock(event: PlayerInteractEvent, priority: EventPriority) {
         if (event.action == Action.PHYSICAL) return
         
         val player = event.player

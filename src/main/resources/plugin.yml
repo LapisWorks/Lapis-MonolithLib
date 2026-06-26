@@ -1,6 +1,6 @@
 name: MonolithLib
 version: '1.0'
-main: top.mc506lw.rebar.MonolithLib
+main: top.mc506lw.monolith.MonolithLib
 api-version: '1.21'
 authors: [ mc506lw ]
 description: 高性能巨构多方块结构前置库

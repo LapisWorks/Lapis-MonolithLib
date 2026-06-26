@@ -1,6 +1,6 @@
 package top.mc506lw.monolith.feature.display
 
-import io.github.pylonmc.rebar.block.base.RebarEntityHolderBlock
+import io.github.pylonmc.rebar.block.interfaces.EntityHolderRebarBlock
 import io.github.pylonmc.rebar.entity.display.BlockDisplayBuilder
 import io.github.pylonmc.rebar.entity.display.transform.TransformBuilder
 import org.bukkit.Bukkit
@@ -16,7 +16,7 @@ import top.mc506lw.monolith.feature.virtual.VirtualDisplayAnchor
 import top.mc506lw.monolith.common.MonolithLogger
 
 class DisplayEntityGroup(
-    private val anchor: RebarEntityHolderBlock,
+    private val anchor: EntityHolderRebarBlock,
     centerLocation: Location,
     private val displayOffset: Vector3f = Vector3f(),
     initialYaw: Float = 0f

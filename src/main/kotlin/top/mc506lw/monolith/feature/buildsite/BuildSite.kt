@@ -501,7 +501,7 @@ class BuildSite(
 
         logger.debug("site=$id", "已放置Anchor方块", "pos" to MonolithLogger.ModuleLogger.formatCoord(coreWorldPos.x, coreWorldPos.y, coreWorldPos.z))
 
-        org.bukkit.Bukkit.getScheduler().runTaskLater(top.mc506lw.rebar.MonolithLib.instance, Runnable {
+        org.bukkit.Bukkit.getScheduler().runTaskLater(top.mc506lw.monolith.MonolithLib.instance, Runnable {
             val anchor = io.github.pylonmc.rebar.block.BlockStorage.get(coreBlock)
             if (anchor == null) {
                 logger.error("site=$id", "无法获取Anchor", "pos" to MonolithLogger.ModuleLogger.formatCoord(coreWorldPos.x, coreWorldPos.y, coreWorldPos.z))
@@ -984,7 +984,7 @@ class BuildSite(
 
     private fun loadBlueprintConfig(blueprintId: String): top.mc506lw.monolith.core.io.BlueprintConfig? {
         return try {
-            val plugin = top.mc506lw.rebar.MonolithLib.instance
+            val plugin = top.mc506lw.monolith.MonolithLib.instance
             val blueprintsFolder = File(plugin.dataFolder, "blueprints")
             val configFile = File(blueprintsFolder, "$blueprintId/$blueprintId.yml")
 

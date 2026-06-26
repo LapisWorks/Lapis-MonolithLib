@@ -11,7 +11,7 @@ import top.mc506lw.monolith.common.MonolithLogger
 import top.mc506lw.monolith.core.transform.BlockStateRotator
 import top.mc506lw.monolith.core.transform.CoordinateTransform
 import top.mc506lw.monolith.core.transform.Facing
-import top.mc506lw.rebar.MonolithLib
+import top.mc506lw.monolith.MonolithLib
 import io.github.pylonmc.rebar.block.BlockStorage
 import java.util.concurrent.CompletableFuture
 

@@ -1,13 +1,13 @@
 package top.mc506lw.monolith.validation
 
 import io.github.pylonmc.rebar.block.BlockStorage
-import io.github.pylonmc.rebar.block.base.RebarMultiblock
+import io.github.pylonmc.rebar.block.interfaces.RebarMultiblock
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.block.Block
 import org.bukkit.event.block.BlockPlaceEvent
-import top.mc506lw.rebar.MonolithLib
+import top.mc506lw.monolith.MonolithLib
 import java.util.concurrent.CompletableFuture
 
 object RebarTrigger {

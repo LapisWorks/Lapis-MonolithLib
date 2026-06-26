@@ -8,7 +8,7 @@ import org.bukkit.NamespacedKey
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.ShapelessRecipe
 import top.mc506lw.monolith.common.MonolithLogger
-import top.mc506lw.rebar.MonolithLib
+import top.mc506lw.monolith.MonolithLib
 
 object BlueprintTableMachine {
 

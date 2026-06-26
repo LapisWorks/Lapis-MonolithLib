@@ -632,7 +632,7 @@ class BuildSiteListener : Listener {
     }
 
     private fun scheduleRenderingUpdate(site: BuildSite) {
-        Bukkit.getScheduler().runTaskLater(top.mc506lw.rebar.MonolithLib.instance, Runnable {
+        Bukkit.getScheduler().runTaskLater(top.mc506lw.monolith.MonolithLib.instance, Runnable {
             for (onlinePlayer in Bukkit.getOnlinePlayers()) {
                 site.renderForPlayer(onlinePlayer)
             }

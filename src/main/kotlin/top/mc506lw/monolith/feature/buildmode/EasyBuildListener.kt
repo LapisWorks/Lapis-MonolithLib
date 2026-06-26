@@ -20,7 +20,7 @@ import top.mc506lw.monolith.feature.buildsite.BuildSite
 import top.mc506lw.monolith.feature.buildsite.BuildSiteManager
 import top.mc506lw.monolith.feature.buildsite.BuildSiteState
 import top.mc506lw.monolith.feature.buildsite.EasyBuildManager
-import top.mc506lw.rebar.MonolithLib
+import top.mc506lw.monolith.MonolithLib
 
 class EasyBuildListener : Listener {
 

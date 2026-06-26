@@ -6,7 +6,7 @@ import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import org.bukkit.scheduler.BukkitTask
 import top.mc506lw.monolith.common.I18n
-import top.mc506lw.rebar.MonolithLib
+import top.mc506lw.monolith.MonolithLib
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
