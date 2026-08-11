@@ -1,5 +1,5 @@
 name: MonolithLib
-version: '1.0'
+version: '${version}'
 main: top.mc506lw.monolith.MonolithLib
 api-version: '1.21'
 authors: [ mc506lw ]
