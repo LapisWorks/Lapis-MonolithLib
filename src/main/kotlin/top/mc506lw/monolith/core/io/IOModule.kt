@@ -56,10 +56,16 @@ class IOModule(dataFolder: File) {
         val assembledSource = load(assembledFile) ?: error("无法读取 ${assembledFile.name}")
         val scaffold = scaffoldSource.scaffoldShape
         val assembled = assembledSource.assembledShape
-        val scaffoldPositions = scaffold.blocks.mapTo(HashSet()) { it.position }
-        val assembledPositions = assembled.blocks.mapTo(HashSet()) { it.position }
-        require(scaffoldPositions == assembledPositions) {
-            "脚手架和成型阶段占据的坐标不一致"
+        val scaffoldBox = scaffold.boundingBox
+        val assembledBox = assembled.boundingBox
+        require(
+            scaffoldBox.sizeX == assembledBox.sizeX &&
+                scaffoldBox.sizeY == assembledBox.sizeY &&
+                scaffoldBox.sizeZ == assembledBox.sizeZ
+        ) {
+            "脚手架和成型阶段占据的空间不一致 " +
+                "(脚手架 ${scaffoldBox.sizeX}x${scaffoldBox.sizeY}x${scaffoldBox.sizeZ} vs " +
+                "成型 ${assembledBox.sizeX}x${assembledBox.sizeY}x${assembledBox.sizeZ})"
         }
 
         val blueprint = Blueprint(

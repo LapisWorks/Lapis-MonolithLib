@@ -11,6 +11,7 @@ import top.mc506lw.monolith.core.model.BlueprintMeta
 import top.mc506lw.monolith.core.model.BuildStage
 import top.mc506lw.monolith.core.model.DisplayEntityData
 import top.mc506lw.monolith.core.model.DisplayType
+import top.mc506lw.monolith.core.model.BoundingBox
 import top.mc506lw.monolith.core.model.Shape
 import top.mc506lw.monolith.common.MonolithLogger
 import top.mc506lw.monolith.validation.predicate.*
@@ -361,7 +362,11 @@ object BinaryFormat : StructureSerializer {
         val blockCount = dis.readInt()
         val blocks = readBlockEntries(dis, blockCount, Int.MAX_VALUE)
         
-        return Shape(blocks)
+        // 保留文件记录的选区完整体积（含空气），而非按非空气方块重新计算
+        return Shape(
+            blocks,
+            BoundingBox(0, 0, 0, sizeX - 1, sizeY - 1, sizeZ - 1)
+        )
     }
     
     private fun writeDisplayEntities(dos: DataOutputStream, entities: List<DisplayEntityData>) {

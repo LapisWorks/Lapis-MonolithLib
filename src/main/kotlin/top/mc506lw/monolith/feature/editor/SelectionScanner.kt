@@ -5,6 +5,7 @@ import org.bukkit.entity.BlockDisplay
 import org.bukkit.entity.ItemDisplay
 import top.mc506lw.monolith.core.math.Vector3i
 import top.mc506lw.monolith.core.model.BlockEntry
+import top.mc506lw.monolith.core.model.BoundingBox
 import top.mc506lw.monolith.core.model.DisplayEntityData
 import top.mc506lw.monolith.core.model.DisplayType
 import top.mc506lw.monolith.core.model.Shape
@@ -48,7 +49,16 @@ object SelectionScanner {
                 }
             }
         }
-        val shape = Shape(blocks)
+        // boundingBox 记录选区完整体积（含空气），供 merge 校验"占据空间一致"
+        val shape = Shape(
+            blocks,
+            BoundingBox(
+                0, 0, 0,
+                max.x - min.x,
+                max.y - min.y,
+                max.z - min.z
+            )
+        )
 
         // controller 偏移：pos1 视为 controller 位置（沿用 WorldEdit 习惯），相对 min
         val controllerOffset = Vector3i(pos1.x - min.x, pos1.y - min.y, pos1.z - min.z)
