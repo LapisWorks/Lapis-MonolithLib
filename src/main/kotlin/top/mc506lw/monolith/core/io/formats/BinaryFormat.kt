@@ -22,7 +22,7 @@ import java.util.logging.Level
 object BinaryFormat : StructureSerializer {
 
     private const val MAGIC: Int = 0x4D4E4231
-    private const val CURRENT_VERSION = 4
+    private const val CURRENT_VERSION = 6
 
     private val log = MonolithLogger.getLogger("BinaryFmt")
     
@@ -83,11 +83,12 @@ object BinaryFormat : StructureSerializer {
             
             writeString(dos, blueprint.meta.displayName)
             writeString(dos, blueprint.meta.description)
+            writeString(dos, blueprint.meta.author)
 
             val displayOffset = blueprint.meta.displayOffset
-            dos.writeShort(displayOffset.x)
-            dos.writeShort(displayOffset.y)
-            dos.writeShort(displayOffset.z)
+            dos.writeFloat(displayOffset.x)
+            dos.writeFloat(displayOffset.y)
+            dos.writeFloat(displayOffset.z)
             
             dos.writeInt(blueprint.slots.size)
             for ((slotId, pos) in blueprint.slots) {
@@ -162,16 +163,20 @@ object BinaryFormat : StructureSerializer {
         
         val displayName = readString(dis)
         val description = readString(dis)
+        val author = if (version >= 5) readString(dis) else ""
 
-        val displayOffsetX = dis.readShort().toInt()
-        val displayOffsetY = dis.readShort().toInt()
-        val displayOffsetZ = dis.readShort().toInt()
+        val displayOffset = if (version >= 6) {
+            Vector3f(dis.readFloat(), dis.readFloat(), dis.readFloat())
+        } else {
+            Vector3f(dis.readShort().toFloat(), dis.readShort().toFloat(), dis.readShort().toFloat())
+        }
 
         val meta = BlueprintMeta(
             displayName = displayName,
             description = description,
+            author = author,
             controllerOffset = Vector3i(centerX, centerY, centerZ),
-            displayOffset = Vector3i(displayOffsetX, displayOffsetY, displayOffsetZ)
+            displayOffset = displayOffset
         )
         
         val slots = mutableMapOf<String, Vector3i>()
@@ -192,7 +197,7 @@ object BinaryFormat : StructureSerializer {
             customData[key] = value
         }
         
-        val displayEntities = readDisplayEntities(dis)
+        val displayEntities = readDisplayEntities(dis, version)
         
         val stages = if (hasDualStage) {
             mapOf(BuildStage.SCAFFOLD to scaffoldShape, BuildStage.ASSEMBLED to assembledShape)
@@ -374,6 +379,7 @@ object BinaryFormat : StructureSerializer {
             writeQuaternionf(dos, entity.rotation)
             writeVector3f(dos, entity.scale)
             writeVector3f(dos, entity.translation)
+            writeString(dos, entity.group)
             
             val hasBlockData = entity.blockData != null
             dos.writeBoolean(hasBlockData)
@@ -389,7 +395,7 @@ object BinaryFormat : StructureSerializer {
         }
     }
     
-    private fun readDisplayEntities(dis: DataInputStream): List<DisplayEntityData> {
+    private fun readDisplayEntities(dis: DataInputStream, version: Int): List<DisplayEntityData> {
         val count = dis.readInt()
         val entities = mutableListOf<DisplayEntityData>()
         
@@ -409,6 +415,8 @@ object BinaryFormat : StructureSerializer {
                 val scale = readVector3f(dis)
                 val translation = readVector3f(dis)
                 
+                val group = if (version >= 5) readString(dis) else "default"
+
                 val blockData = if (dis.readBoolean()) {
                     val str = readString(dis)
                     try { Bukkit.createBlockData(str) } catch (_: Exception) { null }
@@ -425,7 +433,8 @@ object BinaryFormat : StructureSerializer {
                     scale = scale,
                     translation = translation,
                     blockData = blockData,
-                    itemStack = itemStack
+                    itemStack = itemStack,
+                    group = group
                 ))
             } catch (_: Exception) {
                 log.warn("load", "读取显示实体失败，跳过")

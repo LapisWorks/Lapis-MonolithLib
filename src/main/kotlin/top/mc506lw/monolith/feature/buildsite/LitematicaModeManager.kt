@@ -1,7 +1,6 @@
 package top.mc506lw.monolith.feature.buildsite
 
 import net.kyori.adventure.text.Component
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import org.bukkit.scheduler.BukkitTask
@@ -13,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap
 object LitematicaModeManager {
     
     private const val PROXIMITY_RANGE = 16.0
-    private const val AWAY_TIMEOUT_TICKS = 60 * 20L
+    private const val AWAY_TIMEOUT_TICKS = 5 * 20L
     
     private data class PlayerModeState(
         var easyBuild: Boolean = false,
@@ -23,7 +22,6 @@ object LitematicaModeManager {
     )
     
     private val playerStates = ConcurrentHashMap<UUID, PlayerModeState>()
-    private val legacy = LegacyComponentSerializer.legacySection()
     
     fun isEasyBuildEnabled(player: Player): Boolean {
         return playerStates[player.uniqueId]?.easyBuild == true
@@ -31,6 +29,26 @@ object LitematicaModeManager {
     
     fun isPrinterEnabled(player: Player): Boolean {
         return playerStates[player.uniqueId]?.printer == true
+    }
+
+    fun enableEasyBuild(player: Player): Boolean? {
+        if (isEasyBuildEnabled(player)) return true
+        return toggleEasyBuild(player)
+    }
+
+    fun disableEasyBuild(player: Player): Boolean? {
+        if (!isEasyBuildEnabled(player)) return false
+        return toggleEasyBuild(player)
+    }
+
+    fun enablePrinter(player: Player): Boolean? {
+        if (isPrinterEnabled(player)) return true
+        return togglePrinter(player)
+    }
+
+    fun disablePrinter(player: Player): Boolean? {
+        if (!isPrinterEnabled(player)) return false
+        return togglePrinter(player)
     }
     
     fun toggleEasyBuild(player: Player): Boolean? {
@@ -47,15 +65,15 @@ object LitematicaModeManager {
         }
         
         if (BuildSitePreviewManager.hasActivePreview(player)) {
-            player.sendMessage(legacy.serialize(I18n.Message.BuildSite.errHasActivePreview))
+            player.sendMessage(I18n.Message.BuildSite.errHasActivePreview)
             return null
         }
 
-        val nearestSite = findNearestSite(player)
-        if (nearestSite == null) {
+        val nearestAnchor = findNearestAnchor(player)
+        if (nearestAnchor == null) {
             return null
         }
-        
+
         state.easyBuild = true
         state.wasNearSite = true
         return true
@@ -76,14 +94,14 @@ object LitematicaModeManager {
         }
         
         if (BuildSitePreviewManager.hasActivePreview(player)) {
-            player.sendMessage(legacy.serialize(I18n.Message.BuildSite.errHasActivePreview))
+            player.sendMessage(I18n.Message.BuildSite.errHasActivePreview)
         }
         
-        val nearestSite = findNearestSite(player)
-        if (nearestSite == null) {
+        val nearestAnchor = findNearestAnchor(player)
+        if (nearestAnchor == null) {
             return null
         }
-        
+
         state.printer = true
         state.wasNearSite = true
         top.mc506lw.monolith.feature.buildmode.PrinterTask.start(player)
@@ -91,46 +109,27 @@ object LitematicaModeManager {
     }
     
     fun isNearAnySite(player: Player): Boolean {
-        return findNearestSite(player) != null
+        return findNearestAnchor(player) != null
     }
-    
-    fun findNearestSite(player: Player): BuildSite? {
-        val playerLoc = player.location
-        val px = playerLoc.x
-        val py = playerLoc.y
-        val pz = playerLoc.z
-        val range = PROXIMITY_RANGE
-        var nearest: BuildSite? = null
-        var nearestDistSq = Double.MAX_VALUE
-        
-        for (site in BuildSiteManager.getAllActiveSites()) {
-            if (site.anchorLocation.world?.name != playerLoc.world?.name) continue
-            if (site.isCompleted) continue
-            
-            val closestX = px.coerceIn(site.boundingMinX.toDouble(), site.boundingMaxX.toDouble())
-            val closestY = py.coerceIn(site.boundingMinY.toDouble(), site.boundingMaxY.toDouble())
-            val closestZ = pz.coerceIn(site.boundingMinZ.toDouble(), site.boundingMaxZ.toDouble())
-            
-            val dx = px - closestX
-            val dy = py - closestY
-            val dz = pz - closestZ
-            val distSq = dx * dx + dy * dy + dz * dz
-            
-            if (distSq <= range * range && distSq < nearestDistSq) {
-                nearest = site
-                nearestDistSq = distSq
-            }
+
+    /** 搜索附近的 [BuildSiteAnchorBlock]（新系统）。step=1 以避免漏检 1 格偏移 */
+    fun findNearestAnchor(player: Player): BuildSiteAnchorBlock? {
+        return BuildSiteRegistry.nearest(player, PROXIMITY_RANGE)
+    }
+
+    /** 返回附近所有有效的 anchor（用于跨工地移动时重索引 ghost）。step=2 平衡精度与开销 */
+    fun findAnchorsNearbyActive(player: Player): List<BuildSiteAnchorBlock> {
+        return BuildSiteRegistry.all().filter {
+            it.block.world == player.world && it.block.location.distanceSquared(player.location) <= PROXIMITY_RANGE * PROXIMITY_RANGE
         }
-        
-        return nearest
     }
-    
+
     fun onPlayerTick(player: Player) {
         val state = playerStates[player.uniqueId] ?: return
         if (!state.easyBuild && !state.printer) return
-        
+
         val nearSite = isNearAnySite(player)
-        
+
         if (nearSite) {
             state.wasNearSite = true
             cancelAwayTask(player.uniqueId)
@@ -146,7 +145,7 @@ object LitematicaModeManager {
         
         val state = playerStates[playerId] ?: return
         
-        var countdown = 60
+        var countdown = (AWAY_TIMEOUT_TICKS / 20L).toInt()
         
         state.awayTask = Bukkit.getScheduler().runTaskTimer(MonolithLib.instance, Runnable {
             countdown--
@@ -177,11 +176,9 @@ object LitematicaModeManager {
                 cancelAwayTask(playerId)
                 playerStates.remove(playerId)
                 
-                val msg = I18n.Message.BuildMode.errModeAutoDisabled(modes.joinToString("、"))
-                player.sendMessage(legacy.serialize(msg))
-            } else if (countdown <= 10 && countdown % 5 == 0) {
-                val msg = I18n.Message.BuildMode.leftRangeCountdown(countdown)
-                player.sendMessage(legacy.serialize(msg))
+                player.sendMessage(I18n.Message.BuildMode.errModeAutoDisabled(modes.joinToString("、")))
+            } else if (countdown in 1..5) {
+                player.sendMessage(I18n.Message.BuildMode.leftRangeCountdown(countdown))
             }
         }, 20L, 20L)
     }

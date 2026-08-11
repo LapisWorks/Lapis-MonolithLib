@@ -8,21 +8,32 @@ import top.mc506lw.monolith.core.io.ShapeIO
 import top.mc506lw.monolith.core.model.Blueprint
 import top.mc506lw.monolith.core.model.Shape
 import top.mc506lw.monolith.core.transform.Facing
-import top.mc506lw.monolith.feature.buildsite.BuildSite
-import top.mc506lw.monolith.feature.buildsite.BuildSiteManager
 import top.mc506lw.monolith.feature.preview.PreviewSession
 import top.mc506lw.monolith.feature.preview.StructurePreviewManager
 import top.mc506lw.monolith.MonolithLib
+import top.mc506lw.monolith.integration.ProjectControllerRegistry
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 class BlueprintRegistryImpl : BlueprintRegistry {
 
     private val blueprints = ConcurrentHashMap<String, Blueprint>()
+    private val blueprintIdsByControllerKey = ConcurrentHashMap<NamespacedKey, String>()
 
     override fun register(blueprint: Blueprint) {
         blueprints[blueprint.id] = blueprint
+
+        val controllerKey = blueprint.controllerRebarKey
+        if (controllerKey != null) {
+            blueprintIdsByControllerKey[controllerKey] = blueprint.id
+        }
     }
+
+    /**
+     * 根据控制器 key 查找对应的蓝图 ID。
+     * 用于 [top.mc506lw.monolith.integration.MNBController] 在无 PDC 的情况下查找。
+     */
+    fun getBlueprintIdByKey(key: NamespacedKey): String? = blueprintIdsByControllerKey[key]
 
     override fun get(id: String): Blueprint? = blueprints[id]
 
@@ -71,6 +82,10 @@ class IOFacadeImpl(private val dataFolder: File) : IOFacade {
     override fun getSupportedFormats(): List<String> = shapeIO.getSupportedFormats()
 
     override fun getSupportedExtensions(): Set<String> = shapeIO.getSupportedExtensions()
+
+    override fun saveBaseBlueprint(blueprint: Blueprint, id: String): Boolean {
+        return ioModule.saveBaseBlueprint(blueprint, id) != null
+    }
 }
 
 class PreviewFacadeImpl(private val registry: BlueprintRegistry) : PreviewFacade {
@@ -119,19 +134,6 @@ class PreviewFacadeImpl(private val registry: BlueprintRegistry) : PreviewFacade
     }
 }
 
-class BuildSiteFacadeImpl : BuildSiteFacade {
-
-    override fun createSite(player: Player, blueprint: Blueprint, location: Location, facing: Facing): BuildSite? {
-        return BuildSiteManager.createSite(blueprint, location, facing)
-    }
-
-    override fun getSite(location: Location): BuildSite? {
-        return BuildSiteManager.getSiteAt(location)
-    }
-
-    override fun getAllActiveSites(): List<BuildSite> = BuildSiteManager.getAllActiveSites()
-}
-
 class MonolithAPIImpl(
     private val dataFolder: File
 ) : MonolithAPI {
@@ -139,12 +141,14 @@ class MonolithAPIImpl(
     override val registry: BlueprintRegistry = BlueprintRegistryImpl()
     override val io: IOFacade = IOFacadeImpl(dataFolder)
     override val preview: PreviewFacade = PreviewFacadeImpl(registry)
-    override val buildSite: BuildSiteFacade = BuildSiteFacadeImpl()
 
     override fun reloadStructures() {
         registry.clear()
         val ioModule = IOModule(dataFolder)
         val blueprints = ioModule.loadAllBlueprints()
-        blueprints.forEach { registry.register(it) }
+        blueprints.forEach {
+            ProjectControllerRegistry.ensureRegistered(it)
+            registry.register(it)
+        }
     }
 }

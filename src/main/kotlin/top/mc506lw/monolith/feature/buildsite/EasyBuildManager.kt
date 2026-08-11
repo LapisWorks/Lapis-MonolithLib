@@ -1,7 +1,5 @@
 package top.mc506lw.monolith.feature.buildsite
 
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
-import org.bukkit.Bukkit
 import org.bukkit.GameMode
 import org.bukkit.Material
 import org.bukkit.block.Block
@@ -14,242 +12,62 @@ import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
-import top.mc506lw.monolith.common.I18n
-import top.mc506lw.monolith.core.math.Vector3i
 import top.mc506lw.monolith.MonolithLib
-import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
-
-data class GhostBlockEntry(
-    val site: BuildSite,
-    val ghost: SiteGhostBlock
+data class AnchorGhostEntry(
+    val anchor: BuildSiteAnchorBlock,
+    val worldPos: top.mc506lw.monolith.core.math.Vector3i,
+    val previewBlockData: BlockData
 )
 
+/** EasyBuild resolves a clicked world position on demand; it never indexes every ghost block. */
 object EasyBuildManager : Listener {
-    
-    private data class PosKey(val x: Int, val y: Int, val z: Int)
-    
-    private val ghostIndex = ConcurrentHashMap<PosKey, GhostBlockEntry>()
-    private val legacy = LegacyComponentSerializer.legacySection()
-    
-    fun isEnabled(player: Player): Boolean {
-        return LitematicaModeManager.isEasyBuildEnabled(player)
-    }
-    
-    fun toggle(player: Player): Boolean? {
-        return LitematicaModeManager.toggleEasyBuild(player)
-    }
-    
-    fun rebuildIndex() {
-        ghostIndex.clear()
-        
-        for (site in BuildSiteManager.getAllActiveSites()) {
-            if (site.isCompleted || site.state != BuildSiteState.BUILDING) continue
-            
-            val currentLayerY = site.getCurrentLayerY() ?: continue
-            
-            for (ghost in site.allGhostBlocks) {
-                if (ghost.isCore) continue
-                if (ghost.worldPos.y != currentLayerY) continue
-                if (ghost.worldPos in site.placedBlocks) continue
-                
-                ghostIndex[PosKey(ghost.worldPos.x, ghost.worldPos.y, ghost.worldPos.z)] = 
-                    GhostBlockEntry(site, ghost)
-            }
-        }
-    }
-    
-    fun onSiteUpdated(site: BuildSite) {
-        if (site.isCompleted || site.state != BuildSiteState.BUILDING) {
-            for (ghost in site.allGhostBlocks) {
-                ghostIndex.remove(PosKey(ghost.worldPos.x, ghost.worldPos.y, ghost.worldPos.z))
-            }
-            return
-        }
-        
-        val currentLayerY = site.getCurrentLayerY() ?: return
-        
-        for (ghost in site.allGhostBlocks) {
-            val key = PosKey(ghost.worldPos.x, ghost.worldPos.y, ghost.worldPos.z)
-            
-            if (ghost.isCore || ghost.worldPos.y != currentLayerY || ghost.worldPos in site.placedBlocks) {
-                ghostIndex.remove(key)
-            } else {
-                ghostIndex[key] = GhostBlockEntry(site, ghost)
-            }
-        }
-    }
-    
+    fun isEnabled(player: Player): Boolean = LitematicaModeManager.isEasyBuildEnabled(player)
+    fun toggle(player: Player): Boolean? = LitematicaModeManager.toggleEasyBuild(player)
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun onPlayerInteract(event: PlayerInteractEvent) {
-        if (event.action != Action.RIGHT_CLICK_BLOCK) return
-        if (event.hand != EquipmentSlot.HAND) return
-        
-        val player = event.player
-        if (!isEnabled(player)) return
-        
-        val result = findTargetGhostBlock(event)
-        if (result == null) return
-        
-        val (site, ghost) = result
-        
-        val block = site.anchorLocation.world?.getBlockAt(ghost.worldPos.x, ghost.worldPos.y, ghost.worldPos.z) ?: return
-        
+        if (!isEnabled(event.player) || event.action != Action.RIGHT_CLICK_BLOCK || event.hand != EquipmentSlot.HAND) return
+        val clicked = event.clickedBlock ?: return
+        val face = event.blockFace
+        // 目标方块是点击的面所朝向的空位（Litematica easy place 语义），
+        // 也可能是点击方块本身（已放错材质，需覆盖）。
+        val target = findAnchorGhostEntryAt(clicked.getRelative(face))
+            ?: findAnchorGhostEntryAt(clicked)
+            ?: return
+        val block = target.anchor.block.world.getBlockAt(target.worldPos.x, target.worldPos.y, target.worldPos.z)
         if (!block.type.isAir && !block.isReplaceable) return
-        
-        val requiredMaterial = ghost.previewBlockData.material
-        val requiredBlockData = ghost.previewBlockData.clone()
-        
-        if (player.gameMode == GameMode.CREATIVE) {
-            doPlaceBlock(block, requiredBlockData, player)
-            site.recordPlacement(ghost.worldPos)
-            event.isCancelled = true
-            removeFromIndex(ghost.worldPos)
-            checkAdvancement(site, player)
-            return
-        }
-        
-        var usedItem: ItemStack? = null
-        
-        val itemInHand = player.inventory.itemInMainHand
-        if (itemInHand.type == requiredMaterial && itemInHand.type != Material.AIR) {
-            usedItem = itemInHand
-        } else {
-            for (item in player.inventory.contents) {
-                if (item != null && item.type == requiredMaterial) {
-                    usedItem = item
-                    break
-                }
-            }
-        }
-        
-        if (usedItem == null) return
-        
-        if (usedItem.amount > 1) {
-            usedItem.amount = usedItem.amount - 1
-        } else {
-            player.inventory.removeItem(usedItem)
-        }
-        
-        doPlaceBlock(block, requiredBlockData, player)
-        site.recordPlacement(ghost.worldPos)
+        if (!place(event.player, block, target.previewBlockData)) return
         event.isCancelled = true
-        removeFromIndex(ghost.worldPos)
-        checkAdvancement(site, player)
+        target.anchor.renderForPlayer(event.player)
     }
-    
-    private fun checkAdvancement(site: BuildSite, player: Player) {
-        if (!site.checkLayerCompletion()) return
 
-        val advancedCount = site.advanceToNextIncompleteLayer()
+    fun findAnchorGhostEntryAt(block: Block): AnchorGhostEntry? = BuildSiteRegistry.all()
+        .asSequence()
+        .filter { it.block.world == block.world }
+        .mapNotNull { anchor -> anchor.getGhostAt(top.mc506lw.monolith.core.math.Vector3i(block.x, block.y, block.z))
+            ?.let { AnchorGhostEntry(anchor, it.worldPos, it.previewBlockData) } }
+        .firstOrNull()
 
-        if (advancedCount > 0) {
-            player.sendMessage(legacy.serialize(I18n.Message.BuildMode.layerCompleted(site.currentLayer)))
-
-            Bukkit.getScheduler().runTaskLater(MonolithLib.instance, Runnable {
-                for (onlinePlayer in Bukkit.getOnlinePlayers()) {
-                    site.renderForPlayer(onlinePlayer)
-                }
-                onSiteUpdated(site)
-            }, 5L)
-
-            BuildSiteManager.saveAll()
-        } else {
-            startFinalPhase(site, player)
+    private fun place(player: Player, block: Block, data: BlockData): Boolean {
+        if (player.gameMode != GameMode.CREATIVE) {
+            val item = matchingItem(player, data.material) ?: return false
+            if (item.amount == 1) player.inventory.removeItem(item) else item.amount--
         }
-    }
-    
-    private fun startFinalPhase(site: BuildSite, player: Player) {
-        player.sendMessage(legacy.serialize(I18n.Message.BuildMode.allComplete))
-        
-        val result = site.validateDetailed()
-        
-        player.sendMessage(legacy.serialize(I18n.Message.BuildMode.progress(
-            (result.completionRate * 100).toInt(),
-            result.matchedCount,
-            result.totalCount
-        )))
-        
-        if (!result.isComplete) {
-            player.sendMessage(legacy.serialize(I18n.Message.BuildSite.errIncomplete(result.totalCount - result.matchedCount)))
-            return
-        }
-        
-        if (result.needsFix) {
-            player.sendMessage(legacy.serialize(I18n.Message.BuildMode.needFix(result.blocksToFix.size)))
-            
-            val world = site.anchorLocation.world
-            if (world != null) {
-                val fixedCount = top.mc506lw.monolith.validation.AutoFixer.fixBlocksSync(result.blocksToFix, world)
-                if (fixedCount > 0) {
-                    player.sendMessage(legacy.serialize(I18n.Message.BuildMode.fixed(fixedCount)))
-                }
-            }
-        }
-        
-        site.enterAwaitingCore()
-        EasyBuildManager.onSiteUpdated(site)
-        BuildSiteManager.saveAll()
-
-        Bukkit.getScheduler().runTaskLater(MonolithLib.instance, Runnable {
-            for (onlinePlayer in Bukkit.getOnlinePlayers()) {
-                site.renderForPlayer(onlinePlayer)
-            }
-        }, 10L)
-
-        val rebarKey = site.coreRebarKey
-        if (rebarKey != null) {
-            player.sendMessage(legacy.serialize(I18n.Message.BuildMode.shellComplete))
-            player.sendMessage(legacy.serialize(I18n.Message.BuildMode.shellController(rebarKey.key)))
-            player.sendMessage(legacy.serialize(I18n.Message.BuildSite.shellCoreMarker))
-        } else {
-            player.sendMessage(legacy.serialize(I18n.Message.BuildMode.shellCompleteNoCore))
-            player.sendMessage(legacy.serialize(I18n.Message.BuildSite.shellCoreMarker))
-        }
-    }
-    
-    private fun findTargetGhostBlock(event: PlayerInteractEvent): GhostBlockEntry? {
-        val clickedBlock = event.clickedBlock ?: return null
-        val blockFace = event.blockFace
-        
-        val checkPositions = mutableListOf<Vector3i>()
-        
-        checkPositions.add(Vector3i(clickedBlock.x, clickedBlock.y, clickedBlock.z))
-        
-        val relative = clickedBlock.getRelative(blockFace)
-        checkPositions.add(Vector3i(relative.x, relative.y, relative.z))
-        
-        for (pos in checkPositions) {
-            val entry = ghostIndex[PosKey(pos.x, pos.y, pos.z)]
-            if (entry != null) return entry
-        }
-        
-        return null
-    }
-    
-    fun findGhostEntryAt(x: Int, y: Int, z: Int): GhostBlockEntry? {
-        return ghostIndex[PosKey(x, y, z)]
-    }
-    
-    private fun doPlaceBlock(block: Block, blockData: BlockData, player: Player) {
-        try {
-            block.setBlockData(blockData, false)
-            
-            val sound = block.blockData.material.createBlockData().soundGroup.placeSound
-            block.world.playSound(block.location, sound, 1.0f, 1.0f)
+        return try {
+            block.setBlockData(data.clone(), false)
+            block.world.playSound(block.location, data.material.createBlockData().soundGroup.placeSound, 0.5f, 1.2f)
+            true
         } catch (e: Exception) {
-            MonolithLib.instance.logger.warning("EasyBuild 放置方块失败: ${e.message}")
+            MonolithLib.instance.logger.warning("EasyBuild 放置失败: ${e.message}")
+            false
         }
     }
-    
-    private fun removeFromIndex(pos: Vector3i) {
-        ghostIndex.remove(PosKey(pos.x, pos.y, pos.z))
-    }
-    
-    fun cleanup() {
-        ghostIndex.clear()
-    }
-    
-    fun onPlayerQuit(playerId: UUID) {
-    }
+
+    private fun matchingItem(player: Player, material: Material): ItemStack? = sequenceOf(
+        player.inventory.itemInMainHand,
+        *player.inventory.contents.filterNotNull().toTypedArray()
+    ).firstOrNull { it.type == material }
+
+    fun onPlayerQuit(playerId: java.util.UUID) = Unit
+    fun cleanup() = Unit
 }

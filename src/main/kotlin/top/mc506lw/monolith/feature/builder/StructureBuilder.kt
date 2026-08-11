@@ -135,7 +135,7 @@ class StructureBuilder(
                 val missing = checkResult.missing
                 player.sendMessage(I18n.Message.Builder.errInsufficientMaterials)
                 missing.forEach { (material, count) ->
-                    player.sendMessage("  §7- ${material.name}: 缺少 $count 个")
+                    player.sendMessage(I18n.Message.Builder.missingMaterial(material.name, count))
                 }
                 return false
             }

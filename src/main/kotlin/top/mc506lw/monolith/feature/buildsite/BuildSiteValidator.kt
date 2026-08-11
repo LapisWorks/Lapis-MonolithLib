@@ -258,30 +258,14 @@ object BuildSiteValidator {
     }
     
     private fun checkSiteConflicts(world: World, box: BoundingBox, anchorLocation: Location): List<ValidationError> {
-        val errors = mutableListOf<ValidationError>()
-        val conflictingSites = mutableListOf<Pair<String, Vector3i>>()
-        
-        for (site in BuildSiteManager.getAllActiveSites()) {
-            if (site.anchorLocation.world?.name != world.name) continue
-            
-            for (ghost in site.allGhostBlocks) {
-                if (box.contains(ghost.worldPos)) {
-                    conflictingSites.add(Pair(site.blueprintId, ghost.worldPos))
-                    break
-                }
-            }
-        }
-        
-        if (conflictingSites.isNotEmpty()) {
-            val siteIds = conflictingSites.map { it.first }.distinct()
-            errors.add(ValidationError(
+        val conflict = BuildSiteRegistry.overlaps(world.name, box)
+        return if (conflict != null) {
+            listOf(ValidationError(
                 ErrorType.SITE_CONFLICT,
-                "与 ${siteIds.size} 个现有工地冲突: ${siteIds.joinToString(", ")}",
-                conflictingSites.map { it.second }.take(5)
+                "与现有工地冲突: ${conflict.blueprintId}",
+                listOf(Vector3i(conflict.block.x, conflict.block.y, conflict.block.z))
             ))
-        }
-        
-        return errors
+        } else emptyList()
     }
     
     private fun checkNearbySites(world: World, box: BoundingBox, anchorLocation: Location): List<ValidationWarning> {
@@ -289,17 +273,16 @@ object BuildSiteValidator {
         val nearbySites = mutableListOf<String>()
         val checkRadius = 16
         
-        for (site in BuildSiteManager.getAllActiveSites()) {
-            if (site.anchorLocation.world?.name != world.name) continue
-            
-            val siteBox = calculateSiteBoundingBox(site)
+        for (site in BuildSiteRegistry.all()) {
+            if (site.block.world.name != world.name) continue
+            val siteBox = site.boundingBox()
             
             val nearX = box.maxX + checkRadius >= siteBox.minX && box.minX - checkRadius <= siteBox.maxX
             val nearY = box.maxY + checkRadius >= siteBox.minY && box.minY - checkRadius <= siteBox.maxY
             val nearZ = box.maxZ + checkRadius >= siteBox.minZ && box.minZ - checkRadius <= siteBox.maxZ
             
             if (nearX && nearY && nearZ) {
-                nearbySites.add(site.blueprintId)
+                nearbySites.add(site.blueprintId ?: "unknown")
             }
         }
         
@@ -311,26 +294,6 @@ object BuildSiteValidator {
         }
         
         return warnings
-    }
-    
-    private fun calculateSiteBoundingBox(site: BuildSite): BoundingBox {
-        var minX = Int.MAX_VALUE
-        var minY = Int.MAX_VALUE
-        var minZ = Int.MAX_VALUE
-        var maxX = Int.MIN_VALUE
-        var maxY = Int.MIN_VALUE
-        var maxZ = Int.MIN_VALUE
-        
-        for (ghost in site.allGhostBlocks) {
-            minX = minOf(minX, ghost.worldPos.x)
-            minY = minOf(minY, ghost.worldPos.y)
-            minZ = minOf(minZ, ghost.worldPos.z)
-            maxX = maxOf(maxX, ghost.worldPos.x)
-            maxY = maxOf(maxY, ghost.worldPos.y)
-            maxZ = maxOf(maxZ, ghost.worldPos.z)
-        }
-        
-        return BoundingBox(minX, minY, minZ, maxX, maxY, maxZ)
     }
     
     private fun checkLiquidBlocks(world: World, positions: List<Vector3i>): List<ValidationWarning> {

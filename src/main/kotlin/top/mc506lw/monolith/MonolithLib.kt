@@ -9,6 +9,7 @@ import org.bukkit.block.Block
 import org.bukkit.command.Command
 import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
+import org.bukkit.inventory.ItemStack
 import org.bukkit.plugin.java.JavaPlugin
 import top.mc506lw.monolith.api.MonolithAPI
 import top.mc506lw.monolith.api.BlueprintAPI
@@ -24,18 +25,19 @@ import top.mc506lw.monolith.feature.preview.PreviewModule
 import top.mc506lw.monolith.feature.preview.StructurePreviewManager
 import top.mc506lw.monolith.feature.builder.StructureBuildManager
 import top.mc506lw.monolith.feature.rebar.RebarModule
-import top.mc506lw.monolith.feature.buildsite.BuildSiteManager
-import top.mc506lw.monolith.feature.buildsite.BuildSite
 import top.mc506lw.monolith.feature.buildsite.BuildSiteListener
-import top.mc506lw.monolith.feature.buildsite.BuildSiteState
+import top.mc506lw.monolith.feature.buildsite.BuildSiteRegistry
 import top.mc506lw.monolith.internal.listener.MonolithBlockListener
 import top.mc506lw.monolith.internal.listener.RebarControllerListener
 import top.mc506lw.monolith.internal.scheduler.TickScheduler
 import top.mc506lw.monolith.internal.selection.SelectionManager
 import top.mc506lw.monolith.internal.selection.SelectionWand
 import top.mc506lw.monolith.internal.command.MonolithTabCompleter
-import top.mc506lw.monolith.test.TestModule
-import top.mc506lw.monolith.feature.machine.BlueprintTableMachine
+import top.mc506lw.monolith.integration.MultiblockWrench
+import top.mc506lw.monolith.integration.ProjectControllerRegistry
+import top.mc506lw.monolith.integration.FormedStructureListener
+import top.mc506lw.monolith.feature.buildsite.BuildSiteAnchorBlock
+import top.mc506lw.monolith.feature.buildsite.BuildSiteAnchorItem
 import top.mc506lw.monolith.feature.virtual.VirtualDisplayAnchorRegistry
 import java.io.File
 import java.util.Locale
@@ -64,14 +66,14 @@ class MonolithLib : JavaPlugin(), RebarAddon {
     private lateinit var blockListener: MonolithBlockListener
     private lateinit var chunkHandler: ChunkHandler
 
-    val importsDirectory: File
-        get() = ioModule.importsDirectory
+    val temDirectory: File
+        get() = ioModule.temDirectory
 
-    val blueprintsDirectory: File
-        get() = ioModule.blueprintsDirectory
+    val worksDirectory: File
+        get() = ioModule.worksDirectory
 
-    val productsDirectory: File
-        get() = ioModule.productsDirectory
+    val projectsDirectory: File
+        get() = ioModule.projectsDirectory
 
     override fun onEnable() {
         instance = this
@@ -87,7 +89,6 @@ class MonolithLib : JavaPlugin(), RebarAddon {
         initBuildSiteSystem()
         registerListeners()
         registerCommands()
-        initTestModule()
         initMachines()
         SelectionManager.init()
 
@@ -102,8 +103,7 @@ class MonolithLib : JavaPlugin(), RebarAddon {
         materialModule.clearCache()
         StructurePreviewManager.cleanup()
         StructureBuildManager.cleanup()
-        BuildSiteManager.stopTracking()
-        BuildSiteManager.cleanup()
+        BuildSiteRegistry.cleanup()
         top.mc506lw.monolith.feature.buildsite.EasyBuildManager.cleanup()
         top.mc506lw.monolith.feature.buildsite.PrinterManager.cleanup()
         top.mc506lw.monolith.feature.buildsite.LitematicaModeManager.cleanup()
@@ -123,9 +123,14 @@ class MonolithLib : JavaPlugin(), RebarAddon {
         return when (args[0].lowercase()) {
             "preview" -> { handlePreviewDomain(sender, args.drop(1)); true }
             "build" -> { handleBuildDomain(sender, args.drop(1)); true }
+            "easybuild" -> { handleBuildEasy(sender, args.drop(1)); true }
+            "printer" -> { handleBuildPrinter(sender, args.drop(1)); true }
             "bp" -> { handleBlueprintDomain(sender, args.drop(1)); true }
             "site" -> { handleSiteDomain(sender, args.drop(1)); true }
-            "edit" -> { handleEditDomain(sender, args.drop(1)); true }
+            "wand" -> { handleEditWand(sender); true }
+            "save" -> { handleVisionSave(sender, args.drop(1)); true }
+            "merge" -> { handleMerge(sender, args.drop(1)); true }
+            "project" -> { handleProjectDomain(sender, args.drop(1)); true }
             "reload" -> { handleReload(sender); true }
             else -> { sendHelp(sender); true }
         }
@@ -149,14 +154,6 @@ class MonolithLib : JavaPlugin(), RebarAddon {
 
     private fun initBuildSiteSystem() {
         buildSiteListener = BuildSiteListener()
-        BuildSiteManager.init(this)
-
-        val siteCount = BuildSiteManager.getAllActiveSites().size
-        if (siteCount > 0) {
-            moduleLogger.info { "Restored $siteCount persisted build sites" }
-            top.mc506lw.monolith.feature.buildsite.EasyBuildManager.rebuildIndex()
-        }
-
         Bukkit.getScheduler().runTaskTimer(this, Runnable {
             for (player in Bukkit.getOnlinePlayers()) {
                 top.mc506lw.monolith.feature.buildsite.LitematicaModeManager.onPlayerTick(player)
@@ -168,6 +165,7 @@ class MonolithLib : JavaPlugin(), RebarAddon {
         server.pluginManager.registerEvents(blockListener, this)
         server.pluginManager.registerEvents(chunkHandler, this)
         server.pluginManager.registerEvents(RebarControllerListener, this)
+        server.pluginManager.registerEvents(FormedStructureListener, this)
         server.pluginManager.registerEvents(buildSiteListener, this)
         server.pluginManager.registerEvents(top.mc506lw.monolith.feature.buildsite.EasyBuildManager, this)
     }
@@ -177,20 +175,29 @@ class MonolithLib : JavaPlugin(), RebarAddon {
         getCommand("monolith")?.tabCompleter = MonolithTabCompleter()
     }
 
-    private fun initTestModule() {
-        try {
-            TestModule.init()
-        } catch (e: Exception) {
-            moduleLogger.warn { "Test module initialization failed: ${e.message}" }
-        }
-    }
-
     private fun initMachines() {
         try {
-            BlueprintTableMachine.registerAll()
             VirtualDisplayAnchorRegistry.register()
+
+            // 注册工地展位
+            io.github.pylonmc.rebar.block.RebarBlock.register(
+                BuildSiteAnchorBlock.KEY,
+                BuildSiteAnchorBlock.MATERIAL,
+                BuildSiteAnchorBlock::class.java
+            )
+            // 用最简单的空物品注册，实际发放用 BuildSiteAnchorItem.createItem()
+            val protoItem = io.github.pylonmc.rebar.item.builder.ItemStackBuilder
+                .rebar(BuildSiteAnchorBlock.MATERIAL, BuildSiteAnchorItem.KEY)
+                .name(I18n.translatable("item.build_site_anchor.name"))
+                .build()
+            io.github.pylonmc.rebar.item.RebarItem.register(
+                BuildSiteAnchorItem::class.java,
+                protoItem,
+                BuildSiteAnchorItem.KEY
+            )
+            moduleLogger.info { "Registered BuildSiteAnchor" }
         } catch (e: Exception) {
-            moduleLogger.warn { "Machine module initialization failed: ${e.message}" }
+            moduleLogger.warn { "Anchor registration failed: ${e.message}" }
         }
 
         try {
@@ -198,12 +205,24 @@ class MonolithLib : JavaPlugin(), RebarAddon {
         } catch (e: Exception) {
             moduleLogger.warn { "Selection wand initialization failed: ${e.message}" }
         }
+
+        try {
+            io.github.pylonmc.rebar.item.RebarItem.register(
+                MultiblockWrench::class.java,
+                MultiblockWrench.STACK,
+                MultiblockWrench.KEY
+            )
+            moduleLogger.info { "Registered MultiblockWrench" }
+        } catch (e: Exception) {
+            moduleLogger.warn { "MultiblockWrench initialization failed: ${e.message}" }
+        }
     }
 
     private fun loadStructures() {
         val blueprints = ioModule.loadAllBlueprints()
 
         blueprints.forEach { blueprint ->
+            ProjectControllerRegistry.ensureRegistered(blueprint)
             api.registry.register(blueprint)
             moduleLogger.info { "Registered blueprint: ${blueprint.id} (${blueprint.sizeX}x${blueprint.sizeY}x${blueprint.sizeZ}, ${blueprint.blockCount} non-air blocks)" }
         }
@@ -223,7 +242,7 @@ class MonolithLib : JavaPlugin(), RebarAddon {
         sender.sendMessage("")
         sender.sendMessage(H.sectionBuild)
         sender.sendMessage(H.sectionPreviewArg("here <ID> [facing]", "一键建造"))
-        sender.sendMessage(H.sectionPreviewArg("easy [on|off]", "轻松放置模式"))
+        sender.sendMessage(H.sectionPreviewArg("easybuild [on|off]", "轻松放置模式"))
         sender.sendMessage(H.sectionPreviewArg("printer [on|off]", "自动打印模式"))
         sender.sendMessage("")
         sender.sendMessage(H.sectionBp)
@@ -238,8 +257,9 @@ class MonolithLib : JavaPlugin(), RebarAddon {
         sender.sendMessage("")
         sender.sendMessage(H.sectionEdit)
         sender.sendMessage(H.sectionPreviewArg("wand", "获取选区魔杖"))
-        sender.sendMessage(H.sectionPreviewArg("save <name> [--scaffold|--assembled]","保存结构"))
-        sender.sendMessage(H.sectionPreviewArg("merge <a> <b>", "合并结构"))
+        sender.sendMessage(H.sectionPreviewArg("save <scaffold|assembled> <id> [--no-displays]", "保存阶段"))
+        sender.sendMessage(H.sectionPreviewArg("merge <id>", "合并结构"))
+        sender.sendMessage(H.sectionPreviewArg("project reload|test <id>", "热重载或发放完整测试工具包"))
         sender.sendMessage("")
         sender.sendMessage(H.sectionReload)
         sender.sendMessage(H.separator)
@@ -259,10 +279,64 @@ class MonolithLib : JavaPlugin(), RebarAddon {
 
         val blueprints = ioModule.loadAllBlueprints()
         blueprints.forEach { blueprint ->
+            ProjectControllerRegistry.ensureRegistered(blueprint)
             api.registry.register(blueprint)
         }
 
         sender.sendMessage(I18n.Message.Command.Reload.complete(blueprints.size))
+    }
+
+    /** Reload one Works/<id>/Setting.yml without disturbing unrelated projects. */
+    private fun handleProjectDomain(sender: CommandSender, args: List<String>) {
+        if (!sender.hasPermission(Constants.Permissions.EDIT)) {
+            sender.sendMessage(I18n.Message.Command.permissionDenied)
+            return
+        }
+        if (args.size < 2 || (!args[0].equals("reload", true) && !args[0].equals("test", true))) {
+            sender.sendMessage(I18n.Message.Command.Project.usageReload)
+            sender.sendMessage(I18n.Message.Command.Project.usageTest)
+            return
+        }
+        val sourceId = args[1]
+        val rebuilt = reloadProject(sourceId)
+        if (rebuilt == null) {
+            sender.sendMessage(I18n.Message.Command.blueprintNotFound(sourceId))
+            return
+        }
+        sender.sendMessage(I18n.Message.Command.Project.reloaded(rebuilt.id, "Works/$sourceId/Setting.yml"))
+        if (args[0].equals("test", true)) {
+            if (sender !is Player) {
+                sender.sendMessage(I18n.Message.Command.playerOnly)
+                return
+            }
+            sender.inventory.addItem(BuildSiteAnchorItem.createItem(rebuilt.id))
+            sender.inventory.addItem(MultiblockWrench.STACK.clone())
+            rebuilt.scaffoldShape.blocks
+                .asSequence()
+                .filter { it.position != rebuilt.meta.controllerOffset }
+                .groupingBy { it.blockData.material }
+                .eachCount()
+                .forEach { (material, count) ->
+                    var remaining = count
+                    while (remaining > 0) {
+                        val amount = minOf(remaining, material.maxStackSize)
+                        sender.inventory.addItem(ItemStack(material, amount))
+                        remaining -= amount
+                    }
+                }
+            sender.sendMessage(I18n.Message.Command.Project.testKitGranted)
+        } else {
+            sender.sendMessage(I18n.Message.Command.Project.formedUnchanged)
+        }
+    }
+
+    fun reloadProject(id: String): Blueprint? {
+        val rebuilt = ioModule.rebuildProject(id) ?: return null
+        ProjectControllerRegistry.ensureRegistered(rebuilt)
+        api.registry.register(rebuilt)
+        BuildSiteRegistry.refreshBlueprint(id, rebuilt.id)
+        if (rebuilt.id != id) api.registry.remove(id)
+        return rebuilt
     }
 
     private fun handlePreviewDomain(sender: CommandSender, args: List<String>) {
@@ -342,7 +416,6 @@ class MonolithLib : JavaPlugin(), RebarAddon {
 
         when (args[0].lowercase()) {
             "here" -> handleBuildHere(sender, args.drop(1))
-            "easy" -> handleBuildEasy(sender, args.drop(1))
             "printer" -> handleBuildPrinter(sender, args.drop(1))
             else -> {
                 sender.sendMessage(I18n.Message.Command.ErrUnknown.build(args[0]))
@@ -404,7 +477,11 @@ class MonolithLib : JavaPlugin(), RebarAddon {
             return
         }
 
-        val result = top.mc506lw.monolith.feature.buildsite.EasyBuildManager.toggle(sender)
+        val result = when (args.firstOrNull()?.lowercase()) {
+            "on" -> top.mc506lw.monolith.feature.buildsite.LitematicaModeManager.enableEasyBuild(sender)
+            "off" -> top.mc506lw.monolith.feature.buildsite.LitematicaModeManager.disableEasyBuild(sender)
+            else -> top.mc506lw.monolith.feature.buildsite.EasyBuildManager.toggle(sender)
+        }
 
         when (result) {
             true -> {
@@ -433,7 +510,11 @@ class MonolithLib : JavaPlugin(), RebarAddon {
             return
         }
 
-        val result = top.mc506lw.monolith.feature.buildsite.PrinterManager.toggle(sender)
+        val result = when (args.firstOrNull()?.lowercase()) {
+            "on" -> top.mc506lw.monolith.feature.buildsite.LitematicaModeManager.enablePrinter(sender)
+            "off" -> top.mc506lw.monolith.feature.buildsite.LitematicaModeManager.disablePrinter(sender)
+            else -> top.mc506lw.monolith.feature.buildsite.PrinterManager.toggle(sender)
+        }
 
         when (result) {
             true -> {
@@ -476,7 +557,7 @@ class MonolithLib : JavaPlugin(), RebarAddon {
 
         if (blueprints.isEmpty()) {
             sender.sendMessage(I18n.Message.Command.List.empty)
-            sender.sendMessage(I18n.Message.Command.List.hint(importsDirectory.absolutePath))
+            sender.sendMessage(I18n.Message.Command.List.hint(projectsDirectory.absolutePath))
             sender.sendMessage(I18n.Message.Command.List.formats)
             return
         }
@@ -500,9 +581,9 @@ class MonolithLib : JavaPlugin(), RebarAddon {
             sender.sendMessage(I18n.Message.Command.Info.title)
             sender.sendMessage(I18n.Message.Command.Info.version(Constants.PLUGIN_VERSION))
             sender.sendMessage(I18n.Message.Command.Info.registered(api.registry.size))
-            sender.sendMessage(I18n.Message.Command.Info.importDir(importsDirectory.absolutePath))
-            sender.sendMessage(I18n.Message.Command.Info.blueprintDir(blueprintsDirectory.absolutePath))
-            sender.sendMessage(I18n.Message.Command.Info.productDir(productsDirectory.absolutePath))
+            sender.sendMessage(I18n.Message.Command.Info.importDir(temDirectory.absolutePath))
+            sender.sendMessage(I18n.Message.Command.Info.blueprintDir(worksDirectory.absolutePath))
+            sender.sendMessage(I18n.Message.Command.Info.productDir(projectsDirectory.absolutePath))
             sender.sendMessage(I18n.Message.Command.Info.formats)
             sender.sendMessage(I18n.Message.Command.Info.rebarIntegration(rebarStatus))
             return
@@ -516,6 +597,35 @@ class MonolithLib : JavaPlugin(), RebarAddon {
         sender.sendMessage(I18n.Message.Command.Info.bpTitle(blueprint.id))
         sender.sendMessage(I18n.Message.Command.Info.size(blueprint.sizeX, blueprint.sizeY, blueprint.sizeZ))
         sender.sendMessage(I18n.Message.Command.Info.blockCount(blueprint.blockCount))
+        sender.sendMessage(I18n.Message.Command.Info.stageBlocks(
+            blueprint.scaffoldShape.blocks.size,
+            blueprint.assembledShape.blocks.size
+        ))
+        val blockDisplays = blueprint.displayEntities.count {
+            it.entityType == top.mc506lw.monolith.core.model.DisplayType.BLOCK
+        }
+        val itemDisplays = blueprint.displayEntities.size - blockDisplays
+        sender.sendMessage(I18n.Message.Command.Info.displays(
+            blueprint.displayEntities.size,
+            blockDisplays,
+            itemDisplays,
+            blueprint.displayEntities.map { it.group.ifBlank { "default" } }.toSet().size
+        ))
+        val controllerKey = blueprint.controllerRebarKey
+        sender.sendMessage(I18n.Message.Command.Info.controller(
+            controllerKey?.toString() ?: "none",
+            if (top.mc506lw.monolith.integration.ProjectControllerRegistry.isRegistered(blueprint)) "yes" else "no"
+        ))
+        val strategy = when (blueprint.formStrategy) {
+            is top.mc506lw.monolith.core.model.FormStrategy.BlockOnly -> "block_only"
+            is top.mc506lw.monolith.core.model.FormStrategy.FullDisplay -> "full_display"
+            is top.mc506lw.monolith.core.model.FormStrategy.Hybrid -> "hybrid"
+        }
+        sender.sendMessage(I18n.Message.Command.Info.strategy(strategy))
+        sender.sendMessage(I18n.Message.Command.Info.offsets(
+            blueprint.meta.controllerOffset.toString(),
+            blueprint.meta.displayOffset.toString()
+        ))
         sender.sendMessage(I18n.Message.Command.Info.name(blueprint.meta.displayName))
         if (blueprint.meta.description.isNotEmpty()) {
             sender.sendMessage(I18n.Message.Command.Info.description(blueprint.meta.description))
@@ -545,15 +655,9 @@ class MonolithLib : JavaPlugin(), RebarAddon {
             return
         }
 
-        if (blueprint.controllerRebarKey == null) {
-            sender.sendMessage(I18n.Message.Command.Info.bpNotFound(blueprintId))
-            return
-        }
-
-        val rebarItem = io.github.pylonmc.rebar.item.builder.ItemStackBuilder
-            .rebar(Material.STRUCTURE_BLOCK, blueprint.controllerRebarKey)
-            .build()
-        sender.inventory.addItem(rebarItem)
+        // 给予工地展位方块（取代旧蓝图纸）
+        val anchorItem = BuildSiteAnchorItem.createItem(blueprintId)
+        sender.inventory.addItem(anchorItem)
         sender.sendMessage(I18n.Message.Command.Bp.given(blueprintId))
     }
 
@@ -572,47 +676,23 @@ class MonolithLib : JavaPlugin(), RebarAddon {
     }
 
     private fun handleSiteList(sender: CommandSender) {
-        val allSites = BuildSiteManager.getAllActiveSites()
+        val allSites = BuildSiteRegistry.all()
         if (allSites.isEmpty()) {
             sender.sendMessage(I18n.Message.Command.Site.noneNearby)
             return
         }
         sender.sendMessage(I18n.Message.Command.Site.listTitle(allSites.size))
         allSites.forEach { site ->
-            val stateComp = when (site.state) {
-                BuildSiteState.BUILDING -> I18n.Message.Command.Site.stateBuilding
-                BuildSiteState.AWAITING_CORE -> I18n.Message.Command.Site.stateAwaiting
-                BuildSiteState.VIRTUAL -> I18n.Message.Command.Site.stateVirtual
-            }
-            val pos = site.coreWorldPos
+            val pos = site.block.location
             sender.sendMessage(I18n.Message.Command.Site.entry(
-                stateComp, site.blueprintId, pos.x, pos.y, pos.z
+                I18n.Message.Command.Site.stateBuilding, site.blueprintId ?: "unknown", pos.blockX, pos.blockY, pos.blockZ
             ))
         }
     }
 
-    private fun findNearestSite(player: Player, range: Double = 10.0): BuildSite? {
-        val playerLoc = player.location
-        val rangeSq = range * range
-        var nearest: BuildSite? = null
-        var nearestDistSq = Double.MAX_VALUE
-
-        for (site in BuildSiteManager.getAllActiveSites()) {
-            if (site.anchorLocation.world?.name != playerLoc.world?.name) continue
-            if (site.isCompleted) continue
-
-            val dx = playerLoc.x - site.anchorLocation.x
-            val dy = playerLoc.y - site.anchorLocation.y
-            val dz = playerLoc.z - site.anchorLocation.z
-            val distSq = dx * dx + dy * dy + dz * dz
-
-            if (distSq <= rangeSq && distSq < nearestDistSq) {
-                nearest = site
-                nearestDistSq = distSq
-            }
-        }
-
-        return nearest
+    /** 查找附近 [BuildSiteAnchorBlock]（新系统） */
+    private fun findNearestAnchor(player: Player, range: Double = 10.0): BuildSiteAnchorBlock? {
+        return BuildSiteRegistry.nearest(player, range)
     }
 
     private fun handleSiteInfo(sender: CommandSender) {
@@ -621,25 +701,21 @@ class MonolithLib : JavaPlugin(), RebarAddon {
             return
         }
 
-        val site = findNearestSite(sender)
-        if (site == null) {
-            sender.sendMessage(I18n.Message.Command.Site.errNoneNearby)
+        val anchor = findNearestAnchor(sender)
+        if (anchor != null) {
+            val bp = anchor.blueprint
+            val bpId = bp?.id ?: anchor.blueprintId ?: "unknown"
+            val pos = anchor.block.location
+            val rate = (anchor.getCompletionRate() * 100).toInt()
+            sender.sendMessage(I18n.Message.Command.Site.infoTitle(bpId))
+            sender.sendMessage(I18n.Message.Command.Site.infoState("建造中"))
+            sender.sendMessage(I18n.Message.Command.Site.infoPosition(pos.blockX, pos.blockY, pos.blockZ))
+            sender.sendMessage(I18n.Message.Command.Site.infoFacing(anchor.facing.name))
+            sender.sendMessage(I18n.Message.Command.Site.infoProgress(rate, 100, "$rate%"))
             return
         }
 
-        val pos = site.coreWorldPos
-        sender.sendMessage(I18n.Message.Command.Site.infoTitle(site.blueprintId))
-        sender.sendMessage(I18n.Message.Command.Site.infoState(site.state.name))
-        sender.sendMessage(I18n.Message.Command.Site.infoPosition(pos.x, pos.y, pos.z))
-        sender.sendMessage(I18n.Message.Command.Site.infoFacing(site.facing.name))
-        if (site.isCompleted) {
-            sender.sendMessage(I18n.Message.Command.Site.infoCompleted)
-        } else {
-            val totalBlocks = site.allGhostBlocks.count { !it.isCore }
-            val placedCount = site.placedBlocks.size
-            val pct = if (totalBlocks > 0) (placedCount * 100 / totalBlocks) else 0
-            sender.sendMessage(I18n.Message.Command.Site.infoProgress(placedCount, totalBlocks, "${pct}%"))
-        }
+        sender.sendMessage(I18n.Message.Command.Site.errNoneNearby)
     }
 
     private fun handleSiteCancel(sender: CommandSender) {
@@ -648,31 +724,85 @@ class MonolithLib : JavaPlugin(), RebarAddon {
             return
         }
 
-        val site = findNearestSite(sender)
-        if (site == null) {
-            sender.sendMessage(I18n.Message.Command.Site.errNoneCancel)
+        val anchor = findNearestAnchor(sender)
+        if (anchor != null) {
+            val bpId = anchor.blueprint?.id ?: "unknown"
+            io.github.pylonmc.rebar.block.BlockStorage.breakBlock(
+                anchor.block,
+                io.github.pylonmc.rebar.block.context.BlockBreakContext.PluginBreak(
+                    anchor.block, normallyDrops = false, shouldSetToAir = true
+                )
+            )
+            sender.sendMessage(I18n.Message.Command.Site.cancelled(bpId))
             return
         }
 
-        BuildSiteManager.removeSite(site.id)
-        sender.sendMessage(I18n.Message.Command.Site.cancelled(site.blueprintId))
+        sender.sendMessage(I18n.Message.Command.Site.errNoneCancel)
     }
 
-    private fun handleEditDomain(sender: CommandSender, args: List<String>) {
-        if (args.isEmpty()) {
-            sender.sendMessage(I18n.Message.Command.ErrUsage.edit)
-            sender.sendMessage(I18n.Message.Command.ErrUsage.editWand)
-            sender.sendMessage(I18n.Message.Command.ErrUsage.editSave)
-            sender.sendMessage(I18n.Message.Command.ErrUsage.editMerge)
+    private fun handleVisionSave(sender: CommandSender, args: List<String>) {
+        if (sender !is Player) {
+            sender.sendMessage(I18n.Message.Command.playerOnly)
             return
         }
-
-        when (args[0].lowercase()) {
-            "wand" -> handleEditWand(sender)
-            "save" -> handleEditSave(sender, args.drop(1))
-            "merge" -> handleEditMerge(sender, args.drop(1))
-            else -> sender.sendMessage(I18n.Message.Command.ErrUnknown.edit(args[0]))
+        if (!sender.hasPermission(Constants.Permissions.EDIT)) {
+            sender.sendMessage(I18n.Message.Command.permissionDenied)
+            return
         }
+        val stage = args.getOrNull(0)?.lowercase()
+        val id = args.getOrNull(1)
+        val option = args.getOrNull(2)?.lowercase()
+        if (stage !in setOf("scaffold", "assembled") || id.isNullOrBlank()
+            || (option != null && option != "--no-displays") || args.size > 3
+        ) {
+            sender.sendMessage(I18n.Message.Command.Edit.saveUsage)
+            return
+        }
+        val selection = SelectionManager.getSelection(sender)
+        if (!selection.isComplete) {
+            sender.sendMessage(I18n.Message.Command.Edit.noSelection)
+            return
+        }
+        val buildStage = if (stage == "scaffold")
+            top.mc506lw.monolith.core.model.BuildStage.SCAFFOLD
+        else
+            top.mc506lw.monolith.core.model.BuildStage.ASSEMBLED
+        val scan = top.mc506lw.monolith.feature.editor.SelectionScanner.captureShape(
+            selection,
+            captureDisplay = option != "--no-displays"
+        )
+        if (scan == null) {
+            sender.sendMessage(I18n.Message.Command.Edit.saveFailed("扫描选区失败"))
+            return
+        }
+        val file = ioModule.saveStage(id, buildStage, scan.shape, scan.displayEntities, scan.controllerOffset)
+        if (file == null) {
+            sender.sendMessage(I18n.Message.Command.Edit.saveFailed("写入阶段文件失败"))
+            return
+        }
+        sender.sendMessage(I18n.Message.Command.Edit.savedWithPath(
+            stage ?: "unknown",
+            scan.shape.blocks.size,
+            scan.displayEntities.size,
+            file.absolutePath
+        ))
+    }
+
+    private fun handleMerge(sender: CommandSender, args: List<String>) {
+        if (!sender.hasPermission(Constants.Permissions.EDIT)) {
+            sender.sendMessage(I18n.Message.Command.permissionDenied)
+            return
+        }
+        val id = args.firstOrNull()
+        if (id.isNullOrBlank()) {
+            sender.sendMessage(I18n.Message.Command.Edit.mergeUsage)
+            return
+        }
+        val blueprint = ioModule.mergeStages(id).getOrElse { error ->
+            sender.sendMessage(I18n.Message.Command.Edit.errMergeFailed(error.message ?: "两阶段数据无效"))
+            return
+        }
+        sender.sendMessage(I18n.Message.Command.Edit.merged(blueprint.blockCount, File(worksDirectory, "$id/$id.mnb").absolutePath))
     }
 
     private fun handleEditWand(sender: CommandSender) {
@@ -690,60 +820,4 @@ class MonolithLib : JavaPlugin(), RebarAddon {
         sender.sendMessage(I18n.Message.Command.Edit.wandGiven)
     }
 
-    private fun handleEditSave(sender: CommandSender, args: List<String>) {
-        if (sender !is Player) {
-            sender.sendMessage(I18n.Message.Command.playerOnly)
-            return
-        }
-
-        if (!sender.hasPermission(Constants.Permissions.EDIT)) {
-            sender.sendMessage(I18n.Message.Command.permissionDenied)
-            return
-        }
-
-        val name = args.getOrNull(0)
-        if (name == null) {
-            sender.sendMessage(I18n.Message.Command.ErrUsage.editSave)
-            return
-        }
-
-        val selection = SelectionManager.getSelection(sender)
-        if (!selection.isComplete) {
-            sender.sendMessage(I18n.Message.Command.Edit.noSelection)
-            return
-        }
-
-        val isAssembled = args.any { it.equals("--assembled", ignoreCase = true) }
-        val isScaffold = args.any { it.equals("--scaffold", ignoreCase = true) }
-
-        sender.sendMessage(I18n.Message.Command.Edit.saveDev)
-    }
-
-    private fun handleEditMerge(sender: CommandSender, args: List<String>) {
-        if (sender !is Player) {
-            sender.sendMessage(I18n.Message.Command.playerOnly)
-            return
-        }
-
-        if (!sender.hasPermission(Constants.Permissions.EDIT)) {
-            sender.sendMessage(I18n.Message.Command.permissionDenied)
-            return
-        }
-
-        val a = args.getOrNull(0)
-        val b = args.getOrNull(1)
-        if (a == null || b == null) {
-            sender.sendMessage(I18n.Message.Command.ErrUsage.editMerge)
-            return
-        }
-
-        val bpA = api.registry.get(a)
-        val bpB = api.registry.get(b)
-        if (bpA == null || bpB == null) {
-            sender.sendMessage(I18n.Message.Command.blueprintNotFound(if (bpA == null) a else b))
-            return
-        }
-
-        sender.sendMessage(I18n.Message.Command.Edit.mergeDev)
-    }
 }

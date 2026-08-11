@@ -39,11 +39,6 @@ class SelectionWand(stack: org.bukkit.inventory.ItemStack) : RebarItem(stack), B
         val STACK: org.bukkit.inventory.ItemStack by lazy {
             ItemStackBuilder.rebar(Material.BLAZE_ROD, KEY)
                 .name(I18n.translatable("item.selection_wand.name"))
-                .lore(listOf(
-                    I18n.translatable("item.selection_wand.lore.0"),
-                    I18n.translatable("item.selection_wand.lore.1"),
-                    I18n.translatable("item.selection_wand.lore.2")
-                ))
                 .build()
         }
     }

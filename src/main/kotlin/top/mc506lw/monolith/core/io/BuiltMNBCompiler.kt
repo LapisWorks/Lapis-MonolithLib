@@ -5,6 +5,7 @@ import org.bukkit.Material
 import org.bukkit.block.data.BlockData
 import org.bukkit.block.data.Directional
 import org.bukkit.block.data.type.Stairs
+import org.joml.Vector3f
 import top.mc506lw.monolith.core.math.Vector3i
 import top.mc506lw.monolith.core.model.BlockEntry
 import top.mc506lw.monolith.core.model.Blueprint
@@ -131,6 +132,11 @@ object BuiltMNBCompiler {
             finalAssembledShape
         )
 
+        // 应用展示实体覆写（允许 yml 修调）
+        val finalDisplayEntities = if (config.displayOverrides.isNotEmpty()) {
+            applyDisplayOverrides(correctedDisplayEntities, config.displayOverrides)
+        } else correctedDisplayEntities
+
         val controllerRebarKey = config.controllerRebarKey ?: rawBlueprint.controllerRebarKey
         var controllerOffset = config.controllerPosition ?: rawBlueprint.meta.controllerOffset
 
@@ -147,9 +153,9 @@ object BuiltMNBCompiler {
         if (config.assembledRotation != 0) {
             val steps = config.assembledRotation / 90
             finalDisplayOffset = when (steps % 4) {
-                1 -> Vector3i(finalDisplayOffset.z, finalDisplayOffset.y, -finalDisplayOffset.x)
-                2 -> Vector3i(-finalDisplayOffset.x, finalDisplayOffset.y, -finalDisplayOffset.z)
-                3 -> Vector3i(-finalDisplayOffset.z, finalDisplayOffset.y, finalDisplayOffset.x)
+                1 -> Vector3f(finalDisplayOffset.z, finalDisplayOffset.y, -finalDisplayOffset.x)
+                2 -> Vector3f(-finalDisplayOffset.x, finalDisplayOffset.y, -finalDisplayOffset.z)
+                3 -> Vector3f(-finalDisplayOffset.z, finalDisplayOffset.y, finalDisplayOffset.x)
                 else -> finalDisplayOffset
             }
             log.debug("compile", "旋转展示偏移", "from" to (config.displayOffset ?: rawBlueprint.meta.displayOffset), "to" to finalDisplayOffset)
@@ -160,6 +166,7 @@ object BuiltMNBCompiler {
         val meta = rawBlueprint.meta.copy(
             displayName = if (config.metaName.isNotEmpty()) config.metaName else rawBlueprint.meta.displayName,
             description = if (config.metaDescription.isNotEmpty()) config.metaDescription else rawBlueprint.meta.description,
+            author = if (config.metaAuthor.isNotEmpty()) config.metaAuthor else rawBlueprint.meta.author,
             controllerOffset = controllerOffset,
             displayOffset = finalDisplayOffset
         )
@@ -178,6 +185,17 @@ object BuiltMNBCompiler {
 
         val customData = if (config.customData.isNotEmpty()) config.customData else rawBlueprint.customData
 
+        // 解析 formStrategy
+        val formStrategy = when (config.formStrategy.lowercase()) {
+            "full_display", "fulldisplay" -> top.mc506lw.monolith.core.model.FormStrategy.FullDisplay()
+            "hybrid" -> {
+                val hidden = finalDisplayEntities.map { it.position }.toSet()
+                if (hidden.isEmpty()) top.mc506lw.monolith.core.model.FormStrategy.BlockOnly
+                else top.mc506lw.monolith.core.model.FormStrategy.Hybrid(hidden)
+            }
+            else -> top.mc506lw.monolith.core.model.FormStrategy.BlockOnly
+        }
+
         return Blueprint(
             id = config.id.ifEmpty { rawBlueprint.id },
             stages = mapOf(
@@ -185,10 +203,12 @@ object BuiltMNBCompiler {
                 BuildStage.ASSEMBLED to finalAssembledShape
             ),
             meta = meta,
-            displayEntities = correctedDisplayEntities,
+            displayEntities = finalDisplayEntities,
             slots = slots,
             customData = customData,
-            controllerRebarKey = controllerRebarKey
+            controllerRebarKey = controllerRebarKey,
+            controllerMaterial = config.generatedControllerMaterial ?: rawBlueprint.controllerMaterial,
+            formStrategy = formStrategy
         )
     }
 
@@ -314,8 +334,19 @@ object BuiltMNBCompiler {
                 log.trace("compile", "实体旋转详情", "index" to index, "total" to displayEntities.size, "posFrom" to entity.position, "posTo" to rp)
             }
 
-            entity.copy(position = rp, translation = entity.translation, blockData = rb)
+            entity.copy(
+                position = rp,
+                translation = rotateVector(entity.translation, steps),
+                blockData = rb
+            )
         }
+    }
+
+    private fun rotateVector(value: org.joml.Vector3f, steps: Int): org.joml.Vector3f = when (steps % 4) {
+        1 -> org.joml.Vector3f(value.z, value.y, -value.x)
+        2 -> org.joml.Vector3f(-value.x, value.y, -value.z)
+        3 -> org.joml.Vector3f(-value.z, value.y, value.x)
+        else -> org.joml.Vector3f(value)
     }
 
     private fun correctDisplayEntities(
@@ -343,6 +374,45 @@ object BuiltMNBCompiler {
             } else {
                 entity
             }
+        }
+    }
+
+    /** 根据 yml 中的 display_entities 覆写覆盖录制时录入的展示实体字段。 */
+    private fun applyDisplayOverrides(
+        entities: List<DisplayEntityData>,
+        overrides: Map<Vector3i, top.mc506lw.monolith.core.io.BlueprintConfig.DisplayOverride>
+    ): List<DisplayEntityData> {
+        if (overrides.isEmpty()) return entities
+        return entities.map { entity ->
+            val ov = overrides[entity.position] ?: return@map entity
+            var newType = entity.entityType
+            ov.type?.let { newType = if (it.lowercase() == "item") DisplayType.ITEM else DisplayType.BLOCK }
+
+            var newBlockData = entity.blockData
+            if (newType == DisplayType.BLOCK && ov.block != null) {
+                try {
+                    newBlockData = Bukkit.createBlockData(ov.block)
+                } catch (e: Exception) {
+                    log.warn("compile", "展示实体 block 覆写解析失败", "pos" to entity.position, "block" to ov.block, "err" to e.message)
+                }
+            }
+            var newItem = entity.itemStack
+            if (newType == DisplayType.ITEM && ov.item != null) {
+                try {
+                    newItem = org.bukkit.inventory.ItemStack(Material.valueOf(ov.item.uppercase()))
+                } catch (e: Exception) {
+                    log.warn("compile", "展示实体 item 覆写解析失败", "pos" to entity.position, "item" to ov.item, "err" to e.message)
+                }
+            }
+            entity.copy(
+                entityType = newType,
+                blockData = newBlockData,
+                itemStack = newItem,
+                translation = ov.translation ?: entity.translation,
+                rotation = ov.rotation ?: entity.rotation,
+                scale = ov.scale ?: entity.scale,
+                group = ov.group ?: entity.group
+            )
         }
     }
 

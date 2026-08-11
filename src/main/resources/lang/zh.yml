@@ -44,25 +44,28 @@ item:
     name: "<gold>自定义控制器"
     lore:
       - "<gray>用于自定义结构的通用控制器"
-  blueprint_table:
-    name: "<gold>蓝图桌"
-    lore:
-      - "<gray>放置后可创建蓝图物品"
   virtual_display_anchor:
     name: "<gray>虚拟展示锚点"
     lore:
       - "<gray>用于虚拟显示实体的锚点方块"
   selection_wand:
     name: "<yellow>选区魔杖"
-    lore_0: "<gray>左键设置起点 A"
-    lore_1: "<gray>右键设置终点 B"
-    lore_2: "<gray>然后使用 /ml save <名称> 保存"
-  blueprint_item:
-    name: "<aqua>蓝图: %blueprint_id%"
-    lore:
-      - "<gray>蓝图: <white>%blueprint_id%</white>"
-      - "<gray>尺寸: <white>%size%</white>"
-      - "<gray>右键空气方块可放置工地"
+    lore: |-
+      <gray>左键设置起点 A
+      <gray>右键设置终点 B
+      <gray>使用 /ml save scaffold|assembled <id>
+  build_site_anchor:
+    name: "<gold>工地展位: %blueprint_id%"
+    lore: |-
+      <gray>右键方块 → 预览并创建工地
+      <gray>预览中再次右键 → 确认放置
+      <gray>完成后用 ←多方块扳手→ 定型
+  multiblock_wrench:
+    name: "<gold>多方块扳手"
+    lore: |-
+      <gray>右键工地展位 → 定型为多方块
+      <gray>Shift+右键已形成的多方块 → 解体
+      <gray>定型前请确保所有方块已铺设完毕
 
 # ──────────────────────────────────────────────
 # CHAT  —  所有玩家面向的聊天消息
@@ -85,7 +88,7 @@ chat:
     err_no_pos1: "<red>[MonolithLib] 请先左键设置 Pos1!</red>"
     err_different_world: "<red>[MonolithLib] Pos1 和 Pos2 必须在同一世界!</red>"
     pos2_set: "<green>[MonolithLib] Pos2 <white>已设置到 (%x%, %y%, %z%)</white>"
-    hint_save: "<gray>[MonolithLib] 使用 /ml save &lt;名称&gt; 保存为 .raw.mnb</gray>"
+    hint_save: "<gray>先用 /ml save scaffold <id>，再用 /ml save assembled <id></gray>"
 
   # ─── 命令系统 ───
   command:
@@ -103,92 +106,111 @@ chat:
       section_build: "<yellow>/ml build</yellow> <gray>- 建造命令</gray>"
       section_bp: "<yellow>/ml bp</yellow> <gray>- 蓝图管理</gray>"
       section_site: "<yellow>/ml site</yellow> <gray>- 工地管理</gray>"
-      section_edit: "<yellow>/ml edit</yellow> <gray>- 编辑器工具 <red>[OP]</red></gray>"
+      section_edit: "<yellow>/ml wand | save | merge</yellow> <gray>- MNB 编辑器 <red>[OP]</red></gray>"
       section_reload: "<yellow>/ml reload</yellow> <gray>- 重载所有结构 <red>[管理员]</red></gray>"
 
-      # 重载
-      reload_starting: "<green>[MonolithLib] 正在重载...</green>"
-      reload_complete: "<green>[MonolithLib] 重载完成！共加载 %count% 个结构。</green>"
+    # 重载
+    reload_starting: "<green>[MonolithLib] 正在重载...</green>"
+    reload_complete: "<green>[MonolithLib] 重载完成！共加载 %count% 个结构。</green>"
 
-      # 列出蓝图
-      list_title: "<gold><bold>[MonolithLib]</bold> <white>已注册蓝图 (%count%)</white></gold>"
-      list_entry: "  <gray>-</gray> <white>%id%</white> <gray>(%size%，%block_count% 方块)%rebar_tag%</gray>"
-      list_empty: "<yellow>暂无已注册的蓝图。</yellow>"
-      list_hint: "<gray>提示：将 .schem/.litematic/.nbt 文件放入 %path%</gray>"
-      list_formats: "<gray>支持格式：<white>.mnb, .schem, .litematic, .nbt</white></gray>"
+    # 列出蓝图
+    list_title: "<gold><bold>[MonolithLib]</bold> <white>已注册蓝图 (%count%)</white></gold>"
+    list_entry: "  <gray>-</gray> <white>%id%</white> <gray>(%size%，%block_count% 方块)%rebar_tag%</gray>"
+    list_empty: "<yellow>暂无已注册的蓝图。</yellow>"
+    list_hint: "<gray>提示：将 .schem/.litematic/.nbt 文件放入 %path%</gray>"
+    list_formats: "<gray>支持格式：<white>.mnb, .schem, .litematic, .nbt</white></gray>"
 
-      # 信息查询
-      info_title: "<gold><bold>[MonolithLib]</bold> <white>插件信息</white></gold>"
-      info_version: "<gray>版本:</gray>       <white>%version%</white>"
-      info_registered: "<gray>蓝图数:</gray>     <white>%count%</white>"
-      info_import_dir: "<gray>导入目录:</gray>   <white>%path%</white>"
-      info_blueprint_dir: "<gray>蓝图目录:</gray>  <white>%path%</white>"
-      info_product_dir: "<gray>成品目录:</gray>  <white>%path%</white>"
-      info_formats: "<gray>支持格式:</gray>   <white>.mnb, .schem, .litematic, .nbt</white>"
-      info_rebar_enabled: "<green>已启用</green>"
-      info_rebar_disabled: "<red>未检测到</red>"
-      info_rebar_integration: "<gray>Rebar 集成：</gray> %status%"
-      info_bp_title: "<gold><bold>[蓝图]</bold> <white>%id%</white></gold>"
-      info_bp_size: "<gray>尺寸：</gray>       <white>%x% × %y% × %z%</white>"
-      info_bp_blocks: "<gray>方块数：</gray>    <white>%count%</white>"
-      info_bp_name: "<gray>名称：</gray>       <white>%name%</white>"
-      info_bp_desc: "<gray>描述：</gray>       <white>%desc%</white>"
-      info_bp_not_found: "<red>未找到蓝图：%id%</red>"
+    # 信息查询
+    info_title: "<gold><bold>[MonolithLib]</bold> <white>插件信息</white></gold>"
+    info_version: "<gray>版本:</gray>       <white>%version%</white>"
+    info_registered: "<gray>蓝图数:</gray>     <white>%count%</white>"
+    info_import_dir: "<gray>导入目录:</gray>   <white>%path%</white>"
+    info_blueprint_dir: "<gray>蓝图目录:</gray>  <white>%path%</white>"
+    info_product_dir: "<gray>成品目录:</gray>  <white>%path%</white>"
+    info_formats: "<gray>支持格式:</gray>   <white>.mnb, .schem, .litematic, .nbt</white>"
+    info_rebar_enabled: "<green>已启用</green>"
+    info_rebar_disabled: "<red>未检测到</red>"
+    info_rebar_integration: "<gray>Rebar 集成：</gray> %status%"
+    info_bp_title: "<gold><bold>[蓝图]</bold> <white>%id%</white></gold>"
+    info_bp_size: "<gray>尺寸：</gray>       <white>%x% × %y% × %z%</white>"
+    info_bp_blocks: "<gray>方块数：</gray>    <white>%count%</white>"
+    info_bp_stage_blocks: "<gray>阶段方块：</gray>  <white>脚手架 %scaffold% / 成型 %assembled%</white>"
+    info_bp_displays: "<gray>展示实体：</gray>  <white>%total%</white> <gray>（方块 %blocks%，物品 %items%，编组 %groups%）</gray>"
+    info_bp_controller: "<gray>控制器：</gray>    <white>%key%</white> <gray>（已注册：%registered%）</gray>"
+    info_bp_strategy: "<gray>成型策略：</gray>  <white>%strategy%</white>"
+    info_bp_offsets: "<gray>坐标偏移：</gray>  <white>控制器 %controller% / 展示 %display%</white>"
+    info_bp_name: "<gray>名称：</gray>       <white>%name%</white>"
+    info_bp_desc: "<gray>描述：</gray>       <white>%desc%</white>"
+    info_bp_not_found: "<red>未找到蓝图：%id%</red>"
 
-      # 蓝图给予
-      bp_given: "<green>[MonolithLib] 已给予蓝图：%id%</green>"
-      bp_not_found: "<red>未找到蓝图：%id%</red>"
-      bp_no_id: "<red>请指定一个蓝图 ID。</red>"
-      bp_hint: "<gray>用法：/ml bp give <蓝图ID></gray>"
-      bp_inventory_full: "<red>[MonolithLib] 背包已满，物品已掉落至地面。</red>"
+    # 蓝图给予
+    bp_given: "<green>[MonolithLib] 已给予蓝图：%id%</green>"
+    bp_not_found: "<red>未找到蓝图：%id%</red>"
+    bp_no_id: "<red>请指定一个蓝图 ID。</red>"
+    bp_hint: "<gray>用法：/ml bp give <蓝图ID></gray>"
+    bp_inventory_full: "<red>[MonolithLib] 背包已满，物品已掉落至地面。</red>"
 
-      # 用法错误（通用）
-      err_usage_preview: "<red>用法：/ml preview <蓝图ID> [朝向]</red>"
-      err_usage_preview_stop: "<gray>  stop              停止预览</gray>"
-      err_usage_build: "<red>用法：/ml build <here|easy|printer></red>"
-      err_usage_build_here: "<gray>  here <ID> [朝向]  在当前位置一键建造</gray>"
-      err_usage_build_easy: "<gray>  easy [on|off]       切换轻松放置模式</gray>"
-      err_usage_build_printer: "<gray>  printer [on|off]    切换自动打印模式</gray>"
-      err_usage_bp: "<red>用法：/ml bp <list|info|give></red>"
-      err_usage_bp_list: "<gray>  list              列出所有蓝图</gray>"
-      err_usage_bp_info: "<gray>  info <ID>         查看蓝图详情</gray>"
-      err_usage_bp_give: "<gray>  give <ID>         给予蓝图物品</gray>"
-      err_usage_site: "<red>用法：/ml site <list|info|cancel></red>"
-      err_usage_site_list: "<gray>  list              活跃工地列表</gray>"
-      err_usage_site_info: "<gray>  info              附近工地状态</gray>"
-      err_usage_site_cancel: "<gray>  cancel            取消附近工地</gray>"
-      err_usage_edit: "<red>用法：/ml edit <wand|save|merge></red>"
-      err_usage_edit_wand: "<gray>  wand              获取选区魔杖</gray>"
-      err_usage_edit_save: "<gray>  save <名称> [--scaffold|--assembled]</gray>"
-      err_usage_edit_merge: "<gray>  merge <a> <b>      合并两个结构</gray>"
+    # 用法错误（通用）
+    err_usage_preview: "<red>用法：/ml preview <蓝图ID> [朝向]</red>"
+    err_usage_preview_stop: "<gray>  stop              停止预览</gray>"
+    err_usage_build: "<red>用法：/ml build <here|printer></red>"
+    err_usage_build_here: "<gray>  here <ID> [朝向]  在当前位置一键建造</gray>"
+    err_usage_build_easy: "<gray>  easybuild [on|off]   切换轻松放置模式</gray>"
+    err_usage_build_printer: "<gray>  printer [on|off]    切换自动打印模式</gray>"
+    err_usage_bp: "<red>用法：/ml bp <list|info|give></red>"
+    err_usage_bp_list: "<gray>  list              列出所有蓝图</gray>"
+    err_usage_bp_info: "<gray>  info <ID>         查看蓝图详情</gray>"
+    err_usage_bp_give: "<gray>  give <ID>         给予蓝图物品</gray>"
+    err_usage_site: "<red>用法：/ml site <list|info|cancel></red>"
+    err_usage_site_list: "<gray>  list              活跃工地列表</gray>"
+    err_usage_site_info: "<gray>  info              附近工地状态</gray>"
+    err_usage_site_cancel: "<gray>  cancel            取消附近工地</gray>"
+    err_usage_edit: "<red>用法：/ml wand | /ml save <阶段> <id> | /ml merge <id></red>"
+    err_usage_edit_wand: "<gray>  wand              获取选区魔杖</gray>"
+    err_usage_edit_save: "<gray>  save <名称> [--scaffold|--assembled]</gray>"
 
-      # 子命令错误
-      err_unknown_subcmd_preview: "<red>未知子命令：%arg%</red>"
-      err_available_preview: "<gray>可用：show, stop</gray>"
-      err_unknown_subcmd_build: "<red>未知子命令：%arg%</red>"
-      err_available_build: "<gray>可用：here, easy, printer</gray>"
-      err_unknown_subcmd_bp: "<red>未知子命令：%arg%</red>"
-      err_available_bp: "<gray>可用：list, info, give</gray>"
-      err_unknown_subcmd_site: "<red>未知子命令：%arg%</red>"
-      err_available_site: "<gray>可用：list, info, cancel</gray>"
-      err_unknown_subcmd_edit: "<red>未知子命令：%arg%</red>"
-      err_available_edit: "<gray>可用：wand, save, merge</gray>"
+    # 子命令错误
+    err_unknown_subcmd_preview: "<red>未知子命令：%arg%</red>"
+    err_available_preview: "<gray>可用：show, stop</gray>"
+    err_unknown_subcmd_build: "<red>未知子命令：%arg%</red>"
+    err_available_build: "<gray>可用：here, printer</gray>"
+    err_unknown_subcmd_bp: "<red>未知子命令：%arg%</red>"
+    err_available_bp: "<gray>可用：list, info, give</gray>"
+    err_unknown_subcmd_site: "<red>未知子命令：%arg%</red>"
+    err_available_site: "<gray>可用：list, info, cancel</gray>"
+    err_unknown_subcmd_edit: "<red>未知子命令：%arg%</red>"
+    err_available_edit: "<gray>可用：wand, save</gray>"
 
-      # 蓝图未找到（共用）
-      err_blueprint_not_found: "<red>未找到蓝图：%id%</red>"
-      err_hint_bp_list: "<gray>使用 /ml bp list 查看可用蓝图</gray>"
+    # 蓝图未找到（共用）
+    err_blueprint_not_found: "<red>未找到蓝图：%id%</red>"
+    err_hint_bp_list: "<gray>使用 /ml bp list 查看可用蓝图</gray>"
 
-      # 建造失败
-      err_build_failed: "<red>[MonolithLib] 启动建造失败。</red>"
+    # 建造失败
+    err_build_failed: "<red>[MonolithLib] 启动建造失败。</red>"
 
-      # 编辑器专用
-      edit_no_selection: "<red>请先使用选区魔杖选择区域。</red>"
-      edit_save_dev: "<yellow>编辑器保存功能开发中...</yellow>"
-      edit_save_failed: "<red>保存失败：%error%</red>"
-      edit_merge_dev: "<yellow>编辑器合并功能开发中...</yellow>"
-      edit_merge_failed: "<red>合并失败：%error%</red>"
-      wand_given: "<green>[MonolithLib] 已获得选区魔杖。</green>"
-      wand_hint: "<gray>左键设置起点 A，右键设置终点 B</gray>"
+    # 编辑器专用
+    edit_no_selection: "<red>请先使用选区魔杖选择区域。</red>"
+    edit_save_failed: "<red>保存失败：%error%</red>"
+    edit_saved: "<green>[MonolithLib] 蓝图已保存：<white>%name%</white>（%count% 方块）</green>"
+    edit_save_scaffold_done: "<green>[MonolithLib] 已记录脚手架阶段：<white>%name%</white>（%count% 方块）</green>"
+    edit_save_assembled_done: "<green>[MonolithLib] 已记录成型阶段：<white>%name%</white>（%count% 方块，%entity_count% 展示实体）</green>"
+    edit_err_size_mismatch: "<red>[MonolithLib] 两阶段尺寸不一致！脚手架 %scaffold% vs 成型 %assembled%。</red>"
+    edit_save_scaffold_hint: "<gray>请继续执行 /ml save assembled %name%</gray>"
+    edit_save_assembled_hint: "<gray>请继续执行 /ml save scaffold %name%</gray>"
+    wand_given: "<green>[MonolithLib] 已获得选区魔杖。</green>"
+    wand_hint: "<gray>左键设置起点 A，右键设置终点 B</gray>"
+    err_save_usage: "<red>用法：/ml save <scaffold|assembled> <id> [--no-displays]</red>"
+    saved_with_path: "<green>[MonolithLib] 已保存 %stage% 阶段：%blocks% 个方块，%displays% 个展示实体</green> <gray>%path%</gray>"
+    err_merge_usage: "<red>用法：/ml merge <id></red>"
+    err_merge_failed: "<red>合并失败：%error%</red>"
+    merged: "<green>[MonolithLib] 已合并 %count% 个方块：%path%</green>"
+
+    project:
+      usage_reload: "<yellow>用法：/ml project reload <id></yellow>"
+      usage_test: "<yellow>用法：/ml project test <id></yellow>"
+      reloaded: "<green>[MonolithLib] 已重载项目 %id%：%source%</green>"
+      test_kit_granted: "<gray>已发放测试工具：工地展位、脚手架材料、扳手及示例配方输入。</gray>"
+      formed_unchanged: "<gray>已成型结构保持不变；请使用扳手 Shift+右键解体后重新成型。</gray>"
 
     # 工地列表与详情
     site:
@@ -250,7 +272,7 @@ chat:
     disassembled: "<red>[MonolithLib] 核心控制器被破坏！整个结构已解体，所有物品已掉落，工地回到初始状态</red>"
     err_has_active_preview: "<red>[MonolithLib] 当前有活跃的工地预览，无法开启建造模式</red>"
     preview_expired: "<red>[MonolithLib] 预览已超时自动取消</red>"
-    preview_countdown: "<yellow>预览将在 <red>%countdown秒</red> 后自动取消</yellow>"
+    preview_countdown: "<yellow>预览将在 <red>%countdown%秒</red> 后自动取消</yellow>"
 
     # 预览悬浮框（全息风格）
     preview_header: "<yellow>========== 工地预览 =========="
@@ -262,20 +284,40 @@ chat:
     preview_errors: "<red>✗ 检测到 %count% 个问题：</red>"
     preview_warnings: "<gold>⚠ 警告：</gold>"
     preview_instructions: "<gray>右键确认放置，潜行+右键取消</gray>"
-    preview_auto_cancel: "<gray>预览将在 <red>%seconds秒</red> 后自动取消</gray>"
+    preview_auto_cancel: "<gray>预览将在 <red>%seconds%秒</red> 后自动取消</gray>"
     preview_footer: "<yellow>=============================="
 
     # 新工地消息
     err_vm_zone_block: "<red>[MonolithLib] 虚拟机器区域禁止放置方块</red>"
-    preview_cancelled_hotbar: "<yellow>[MonolithLib] 切换物品栏，预览已取消</yellow>"
+    preview_cancelled_hotbar_hint: "<yellow>[MonolithLib] 切换物品栏，预览已取消</yellow>"
     err_position_in_site: "<red>[MonolithLib] 该位置已在工地范围内</red>"
     preview_moved: "<green><bold>[MonolithLib]</bold> <white>预览已移动到新位置</white></green>"
     preview_rotated: "<green><bold>[MonolithLib]</bold> <white>预览已旋转到新方向</white></green>"
     preview_confirm_hint: "<green><bold>[MonolithLib]</bold> <white>再次右键同一位置 <yellow>确认创建</yellow> 工地</white></green>"
     preview_timeout_hint: "<gray>(30秒内有效，移动或滚动离开较远会取消)</gray>"
+    err_location_conflict: "<red>[MonolithLib] 工地位置存在冲突，无法放置</red>"
+    err_place_anchor_failed: "<red>[MonolithLib] 放置展位失败</red>"
+    created_hint_1: "<gray>按 ghost 指引铺设方块</gray>"
+    created_hint_2: "<gray>完成后使用 多方块扳手 定型</gray>"
+    completed_hint: "<green>[MonolithLib] 所有方块已铺设完毕！使用 多方块扳手 定型</green>"
+    cancelled_hint: "<gray>[MonolithLib] 工地已取消</gray>"
+    finalized: "<green>[MonolithLib] 多方块已定型！</green>"
     all_layers_complete_hint: "<yellow>[MonolithLib] 所有层已完整，请放置核心控制器</yellow>"
     structure_disassembled_retry: "<yellow>[MonolithLib] 结构已解体，重新进入建造模式 (当前层: %layer%)</yellow>"
     structure_disassembled_retry_no_layer: "<yellow>[MonolithLib] 结构已解体，重新进入建造模式</yellow>"
+
+  # ─── 扳手（多方块扳手） ───
+  wrench:
+    err_not_valid_structure: "<red>[MonolithLib] 这不是一个有效的多方块结构或工地展位</red>"
+    err_no_blueprint: "<red>[MonolithLib] 该展位没有关联的蓝图</red>"
+    err_not_complete: "<red>[MonolithLib] 尚未完成！完成度：%rate%%（缺少 %missing% 个方块）</red>"
+    hint_continue_building: "<gray>继续铺设方块，所有方块就绪后再次使用扳手</gray>"
+    err_finalize_failed: "<red>[MonolithLib] 定型失败：无法放置控制器方块</red>"
+    err_controller_not_registered: "<red>[MonolithLib] 控制器 %key% 未注册，无法成型</red>"
+    hint_shift_disassemble: "<gray>请使用 Shift+右键解体已成型结构</gray>"
+    err_no_blueprint_controller: "<red>[MonolithLib] 该多方块没有关联的蓝图</red>"
+    disassemble_success: "<green>[MonolithLib] 已解体：工地已恢复初始阶段，可继续建造</green>"
+    err_disassemble_failed: "<red>[MonolithLib] 解体失败：无法放置工地展位</red>"
 
   # ─── 建造模式（轻松放置 + 自动打印 合并） ───
   build_mode:
@@ -283,19 +325,19 @@ chat:
     easybuild_enabled: "<green>[MonolithLib] 轻松放置模式已启用</green>"
     easybuild_hint_1: "<gray>对着幽灵方块右键可自动放置匹配的方块</gray>"
     easybuild_hint_2: "<gray>创造模式下无需任何材料</gray>"
-    easybuild_hint_3: "<gray>离开工地范围1分钟后自动关闭</gray>"
+    easybuild_hint_3: "<gray>离开工地范围5秒后自动关闭</gray>"
     easybuild_disabled: "<red>[MonolithLib] 轻松放置模式已关闭</red>"
     printer_enabled: "<green>[MonolithLib] 自动打印模式已启用</green>"
-    printer_hint_1: "<gray>自动放置周身4格范围内的幽灵方块</gray>"
+    printer_hint_1: "<gray>自动放置周身3格范围内的幽灵方块</gray>"
     printer_hint_2: "<gray>创造模式下无需任何材料</gray>"
-    printer_hint_3: "<gray>离开工地范围1分钟后自动关闭</gray>"
+    printer_hint_3: "<gray>离开工地范围5秒后自动关闭</gray>"
     printer_disabled: "<red>[MonolithLib] 自动打印模式已关闭</red>"
 
     # 共用模式错误
     err_no_site_easybuild: "<red>[MonolithLib] 附近没有工地，无法开启轻松放置模式</red>"
     err_no_site_printer: "<red>[MonolithLib] 附近没有工地，无法开启自动打印模式</red>"
     err_mode_auto_disabled: "<red>[MonolithLib] %mode% 已自动关闭（离开工地范围过久）</red>"
-    left_range_countdown: "<yellow>[MonolithLib] 已离开工地范围，<red>%countdown秒</red> 后自动关闭</yellow>"
+    left_range_countdown: "<yellow>[MonolithLib] 已离开工地范围，<red>%countdown%秒</red> 后自动关闭</yellow>"
     usage_litematica: "<red>用法：/ml litematica <easybuild|printer></red>"
 
     # 进度消息（两种模式共用）
@@ -329,7 +371,7 @@ chat:
     err_controller_broken: "<red>控制器方块已被破坏，预览已取消</red>"
     err_not_found: "<red>结构不存在：%structure_id%</red>"
     hint_start_preview: "<gray>使用 /ml preview show <ID> 启动预览</gray>"
-    will_expire: "<gray>预览将在10秒后自动消失</gray>"
+    will_expire: "<gray>预览将在30秒后自动消失</gray>"
     cancelled: "<green>预览已取消</green>"
     err_create_failed: "<red>预览创建失败</red>"
 
@@ -345,16 +387,16 @@ chat:
     summary_warning: "<yellow>⚠ 警告：</yellow>"
     summary_warning_item: "<yellow>- %message%</yellow>"
     summary_confirm: "<gray>右键确认放置，潜行+右键取消</gray>"
-    summary_expire: "<gray>预览将在 <red>10秒</red> 后自动取消</gray>"
+    summary_expire: "<gray>预览将在 <red>30秒</red> 后自动取消</gray>"
     summary_footer: "<yellow>==============================</yellow>"
     timeout_cancelled: "<red>[MonolithLib] 预览超时已自动取消</red>"
-    timeout_countdown: "<yellow>预览将在 <red>%countdown秒</red> 后自动取消</yellow>"
+    timeout_countdown: "<yellow>预览将在 <red>%countdown%秒</red> 后自动取消</yellow>"
 
     # 内部 / 代码级消息
     err_empty_stage: "<red>[MonolithLib] 蓝图 '%id%' 的成型阶段为空，无法预览</red>"
     build_finished: "<green>[MonolithLib] 蓝图构建完成！</green>"
     controller_broken_cancel: "<red>[MonolithLib] 控制器被破坏，预览已取消</red>"
-    timeout_auto_cancel: "<yellow>[MonolithLib] 预览超时（10秒），已自动取消</yellow>"
+    timeout_auto_cancel: "<yellow>[MonolithLib] 预览超时（30秒），已自动取消</yellow>"
     structure_completed: "<green>[MonolithLib] 结构 %id% 已完成！</green>"
     structure_ctrl_broken: "<red>[MonolithLib] 控制器被破坏，预览已取消</red>"
 
@@ -374,58 +416,3 @@ chat:
     complete: "<green>[MonolithLib] 建造完成！</green>"
     structure_info: "<gray>结构：<white>%blueprint_id%</white></gray>"
 
-  # ─── 结构（多方块生命周期事件） ───
-  structure:
-    formed: "<green>结构 %structure_id% 已形成！</green>"
-    broken: "<red>结构 %structure_id% 已损坏！</red>"
-    err_not_found: "<red>结构不存在：%structure_id%</red>"
-    warn_no_blocks: "<yellow>警告：此结构没有定义任何方块！</yellow>"
-    hint_add_blocks: "<gray>请在 YAML 配置中添加 blocks 部分</gray>"
-    controller_detected: "<green>检测到控制器：%key%</green>"
-    associated_structure: "<gray>关联结构：%structure_id%</gray>"
-    block_count: "<gray>方块数：%count%</gray>"
-    slots: "<gray>槽位：%slots%</gray>"
-    custom_data: "<gray>自定义数据：%count% 项</gray>"
-
-  # ─── 蓝图桌（合成 GUI） ───
-  blueprint_table:
-    craft_success: "<green>[蓝图桌] 成功制作出蓝图！</green>"
-    gui_title: "蓝图桌"
-
-  # ─── 测试模块（调试消息） ───
-  test:
-    controller_detected: "<gray>[MLTest] 检测到 test_controller -> test_simple_3x3</gray>"
-    furnace_detected: "<gray>[MLTest] 检测到 furnace_core -> test_loose_furnace</gray>"
-    machine_detected: "<gray>[MLTest] 检测到 machine_core -> test_rebar_machine</gray>"
-    rebar_required: "<aqua>[MLTest] 此结构需要 Rebar 组件！</aqua>"
-    custom_detected: "<gray>[MLTest] 检测到 custom_controller</gray>"
-    custom_hint: "<yellow>[MLTest] 这是一个通用控制器，请在 YAML 中配置对应结构</yellow>"
-    preview_started: "<green>已启动预览：%structure_id%</green>"
-
-  # ─── Rebar 集成状态 ───
-  rebar:
-    integration_enabled: "<green>[MonolithLib] Rebar 集成已启用</green>"
-    integration_disabled: "<yellow>[MonolithLib] 未检测到 Rebar，跳过集成</yellow>"
-    err_integration_failed: "<red>[MonolithLib] Rebar 初始化失败：%error%</red>"
-
-  # ─── I/O 操作（控制台/日志级别） ───
-  io:
-    imported: "已导入蓝图：%name%（%count% 方块）"
-    rebuilt: "已重建产品：%name%"
-    loaded_standalone: "加载独立产品：%name%"
-    err_load_failed: "加载 .mnb 文件失败：%file% - %error%"
-    err_save_failed: "保存 .mnb 文件失败：%file% - %error%"
-
-  # ─── 初始化生命周期（控制台/日志级别） ───
-  init:
-    starting: "[MonolithLib] 正在初始化..."
-    complete: "[MonolithLib] 初始化完成！版本：%version%"
-    shutting_down: "[MonolithLib] 正在关闭..."
-    shutdown_complete: "[MonolithLib] 已关闭"
-    registering: "[MonolithLib] 注册蓝图：%id%（%size%，%count% 非空方块）"
-    loaded_total: "[MonolithLib] 共加载 %count% 个蓝图"
-    test_module_init: "[MonolithLib][Test] 正在初始化测试模块..."
-    test_module_complete: "[MonolithLib][Test] 测试模块初始化完成"
-    test_structures: "[MonolithLib][Test] 已注册 %count% 个测试结构"
-    test_blocks: "[MonolithLib][Test] 已注册 %count% 个测试 Rebar 方块"
-    restored_sites: "[MonolithLib] 恢复了 %count% 个存档工地"

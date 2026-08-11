@@ -31,7 +31,7 @@ object DisplayEntityManager {
         anchorLocation: Location,
         facing: Facing,
         controllerOffset: Vector3i,
-        displayOffset: Vector3i = Vector3i.ZERO,
+        displayOffset: Vector3f = Vector3f(),
         scaffoldWorldPositions: List<Vector3i> = emptyList()
     ): Int {
         val world = anchorLocation.world ?: return 0
@@ -69,13 +69,13 @@ object DisplayEntityManager {
                 deMinZ = minOf(deMinZ, ez - hz)
             }
 
-            val autoX = kotlin.math.round(scMinX - deMinX).toInt()
-            val autoY = kotlin.math.round(scMinY - deMinY).toInt()
-            val autoZ = kotlin.math.round(scMinZ - deMinZ).toInt()
+            val autoX = (scMinX - deMinX).toFloat()
+            val autoY = (scMinY - deMinY).toFloat()
+            val autoZ = (scMinZ - deMinZ).toFloat()
 
             log.debug("align", "自动对齐计算", "scaffoldMin" to "($scMinX,$scMinY,$scMinZ)", "deMin" to "($deMinX,$deMinY,$deMinZ)", "auto" to "($autoX,$autoY,$autoZ)", "userConfig" to displayOffset)
 
-            Vector3i(autoX + displayOffset.x, autoY + displayOffset.y, autoZ + displayOffset.z)
+            Vector3f(autoX + displayOffset.x, autoY + displayOffset.y, autoZ + displayOffset.z)
         } else {
             displayOffset
         }
@@ -91,9 +91,9 @@ object DisplayEntityManager {
             val rotTransY = entity.translation.y.toDouble()
             val rotTransZ = rotationMatrix.m20 * entity.translation.x + rotationMatrix.m22 * entity.translation.z
 
-            val worldX = controllerPos.x + rotTransX + effectiveOffset.x
+            val worldX = controllerPos.x + rotTransX + effectiveOffset.x.toDouble()
             val worldY = controllerPos.y + rotTransY + effectiveOffset.y.toDouble()
-            val worldZ = controllerPos.z + rotTransZ + effectiveOffset.z
+            val worldZ = controllerPos.z + rotTransZ + effectiveOffset.z.toDouble()
 
             val location = Location(world, worldX, worldY, worldZ)
 

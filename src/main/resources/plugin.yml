@@ -10,7 +10,7 @@ softdepend: []
 commands:
   monolith:
     description: MonolithLib 主命令
-    usage: /<command> <preview|build|bp|site|edit|reload>
+    usage: /<command> <wand|save|merge|project|preview|build|easybuild|printer|bp|site|reload>
     permission: monolithlib.base
     aliases: [ml]
 

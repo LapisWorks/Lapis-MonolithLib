@@ -3,14 +3,14 @@
 </p>
 
 <div align="center">
-  <img src="https://img.shields.io/badge/Minecraft-1.21.11-green?style=for-the-badge&logo=minecraft" alt="Minecraft">
-  <img src="https://img.shields.io/badge/Kotlin-1.9.0-purple?style=for-the-badge&logo=kotlin" alt="Kotlin">
+  <img src="https://img.shields.io/badge/Minecraft-26.1-green?style=for-the-badge&logo=minecraft" alt="Minecraft">
+  <img src="https://img.shields.io/badge/Kotlin-2.4.0-purple?style=for-the-badge&logo=kotlin" alt="Kotlin">
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License">
 </div>
 
 <p align="center">
   <a href="https://github.com/pylonmc/rebar" target="_blank">
-    <img src="https://img.shields.io/badge/生态伙伴-Rebar%200.36.2-9370DB?style=flat-square" alt="Rebar">
+    <img src="https://img.shields.io/badge/生态伙伴-Rebar%200.42.0-9370DB?style=flat-square" alt="Rebar">
   </a>
 </p>
 
@@ -26,7 +26,7 @@
   <a href="#-快速开始"><strong>快速开始</strong></a> ·
   <a href="#-rebar-集成指南"><strong>Rebar 集成</strong></a> ·
   <a href="#-项目结构"><strong>架构</strong></a> ·
-  <a href="./API_GUIDE.md"><strong>API 文档</strong></a>
+  <a href="./DEVELOPER_GUIDE.md"><strong>开发者指南</strong></a>
 </div>
 
 <br/>
@@ -144,17 +144,35 @@ class BlastFurnaceMultiblock : RebarSimpleMultiblock {
 
 ## 🎮 玩家使用方法
 
-- `/monolith list` - 查看所有可用蓝图
-- `/monolith info <ID>` - 查看详情与材料
-- `/monolith preview <ID>` - 开启分层投影预览
-- `/monolith build <ID>` - 执行自动建造（未来功能）
-- `/monolith litematica easybuild` - 开启/关闭轻松放置模式
-- `/monolith litematica printer` - 开启/关闭自动打印模式
+**蓝图浏览与发放**
+- `/monolith bp list` - 查看所有可用蓝图
+- `/monolith bp info <ID>` - 查看详情、阶段方块数、展示实体与材料
+- `/monolith bp give <ID>` - 给予蓝图工地锚点物品
 
-**工地系统 (BuildSite)**：玩家使用蓝图物品右键放置后创建的建造区域，支持：
-- 分层渲染：逐层显示待建造的幽灵方块
+**预览与建造**
+- `/monolith preview <ID>` - 开启分层投影预览
+- `/monolith preview stop` - 停止预览
+- `/monolith build here <ID> [facing]` - 一键建造
+- `/monolith easybuild [on|off]` - 开启/关闭轻松放置模式
+- `/monolith printer [on|off]` - 开启/关闭自动打印模式
+
+**工地管理 (BuildSite)**
+- `/monolith site list` - 活跃工地列表
+- `/monolith site info` - 附近工地状态（进度/朝向）
+- `/monolith site cancel` - 取消工地
+
+**蓝图制作（开发者/管理员）**
+- `/monolith wand` - 获取选区魔杖
+- `/monolith save <scaffold|assembled> <ID> [--no-displays]` - 保存建造阶段
+- `/monolith merge <ID>` - 合并两阶段生成 `.mnb`
+- `/monolith project reload <ID>` - 热重载项目配置
+- `/monolith project test <ID>` - 发放完整测试工具包
+
+**工地系统 (BuildSite)**：玩家使用蓝图锚点物品右键放置后创建的建造区域，支持：
+- 分层渲染：逐层显示待建造的幽灵方块（黄=材质正确但状态可不同，红=材质不匹配）
 - 进度追踪：记录已放置的方块位置
 - 核心检测：支持 Rebar 核心控制器的放置检测
+- 朝向调整：放置时可设定结构朝向
 
 **轻松放置模式 (EasyBuild)**：类似 Litematica 的半自动建造
 - 玩家手持正确材质的方块对准幽灵位置右键即可自动放置
@@ -162,25 +180,13 @@ class BlastFurnaceMultiblock : RebarSimpleMultiblock {
 - 建造完所有层后自动进行最终状态修正
 
 **自动打印模式 (Printer)**：自动化的建造助手
-- 玩家周围 4 格范围内的幽灵方块会被自动放置
+- 玩家周围 7 格范围内的幽灵方块会被自动放置
 - 每 4 tick 自动检测并放置一个方块
 - 适合生存模式下的快速建造
 
+**定型与解体**：玩家手持多方块扳手右键工地锚点完成定型（脚手架替换为成型方块 + 激活 Rebar 控制器 + 托管展示实体）；Shift+右键成型结构使用扳手解体，结构恢复为脚手架工地。
+
 **建造体验**：玩家看着投影，不需要死磕每一个方块的朝向。只要放对了材质，MonolithLib 会自动修正所有状态，机器直接启动。
-
----
-
-## 🔧 蓝图桌 (Blueprint Table)
-
-蓝图桌是一个特殊的方块机器，用于在游戏内创建蓝图物品：
-
-**合成配方**：`/# Loom + 4x Paper → Blueprint Table`
-
-蓝图桌功能：
-- GUI 界面显示所有已注册的蓝图
-- 放入纸（Paper）后可以从列表中选择蓝图进行"打印"
-- 打印出的蓝图物品可以右键放置创建工地（BuildSite）
-- 蓝图物品包含面向信息，可以设定结构的朝向
 
 ---
 
@@ -194,19 +200,26 @@ MonolithLib/
 │   ├── dsl/                  # DSL 构建器
 │   └── event/                # 事件定义
 │
+├── common/                   # 🔧 通用基础设施
+│   ├── I18n.kt               #    多语言消息目录
+│   ├── MonolithLogger.kt     #    统一日志
+│   └── Extensions.kt         #    通用扩展
+│
 ├── core/                     # 🧱 纯粹的基础设施
-│   ├── model/                #    Shape、Blueprint 数据模型
+│   ├── model/                #    Shape、Blueprint、FormStrategy 数据模型
 │   ├── math/                 #    向量、矩阵数学
-│   ├── io/formats/           #    格式读写器 (.mnb/.schem/.litematic/.nbt)
-│   └── transform/            #    坐标变换、方块状态旋转
+│   ├── io/                   #    格式读写器 (.mnb/.schem/.litematic/.nbt) 与编译器
+│   └── transform/            #    坐标变换、方块状态旋转、朝向
 │
 ├── feature/                  # 🛠️ 业务功能
-│   ├── preview/             #    Ghost 渲染器、投影会话
+│   ├── preview/             #    Ghost 渲染器、投影会话、显示实体池
 │   ├── builder/             #    建造执行器
-│   ├── buildsite/           #    工地系统：分层建造、进度追踪
-│   ├── machine/             #    蓝图桌机器方块
+│   ├── buildsite/           #    工地系统：锚点、分层建造、EasyBuild、Printer
+│   ├── display/             #    显示实体组与管理
+│   ├── editor/              #    选区扫描器
 │   ├── material/            #    材料统计计算器
-│   └── rebar/               #    Rebar 适配器
+│   ├── rebar/               #    Rebar 适配器
+│   └── virtual/             #    虚拟显示锚点
 │
 ├── validation/               # 🛡️ 核心灵魂：高级验证引擎
 │   ├── ValidationEngine.kt  #    高性能增量检测（只检查材质）
@@ -215,24 +228,30 @@ MonolithLib/
 │   └── predicate/           #    谓词工厂：严格/松散/Rebar 匹配
 │
 ├── integration/              # 🔗 第三方集成
-│   └── BlueprintMultiblockAdapter.kt  # Rebar 多方块适配器
+│   ├── MNBController.kt                # MNB/Rebar 多方块控制器
+│   ├── MonolithComponents.kt           # 默认组件与开发者覆盖 API
+│   ├── MultiblockWrench.kt             # 定型/解体扳手
+│   └── ProjectControllerRegistry.kt    # 控制器注册
 │
 ├── lifecycle/                # ♻️ 生命周期管理
 │   └── BlueprintLifecycle.kt
 │
 └── internal/                 # ⚙️ 内部实现
     ├── command/              #    命令系统
-    └── mixin/                #    底层注入
+    ├── listener/             #    事件监听器
+    ├── mixin/                #    底层注入
+    ├── scheduler/            #    调度器
+    └── selection/            #    选区魔杖与选区管理
 ```
 
 ---
 
 ## ️ 路线图 (未来计划)
 
-- [ ] **投影打印机**：类似投影打印机MOD。
+- [x] **投影打印机**：玩家周围 7 格内的幽灵方块自动放置，每 4 tick 一个方块
 - [ ] **蓝图加农炮**：类似机械动力，搭好加农炮，放入材料图纸，轰出巨型机器。
 - [ ] **图形化蓝图 GUI**：分类浏览、材料预览。
-- [ ] **蓝图分享网络**：支持从在线仓库直接下载 `.mnb` 蓝图。
+- [ ] ~~**蓝图分享网络**~~：已取消
 
 ---
 

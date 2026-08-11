@@ -4,6 +4,7 @@ import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.configuration.file.YamlConfiguration
+import org.joml.Vector3f
 import top.mc506lw.monolith.core.math.Vector3i
 import top.mc506lw.monolith.core.model.Blueprint
 import top.mc506lw.monolith.common.MonolithLogger
@@ -16,6 +17,9 @@ data class BlueprintConfig(
     val controllerType: String = "rebar",
     val controllerRebarKey: NamespacedKey? = null,
     val controllerPosition: Vector3i? = null,
+    /** Material used only when MonolithLib must register the configured key itself. */
+    val generatedControllerMaterial: Material? = null,
+    val formStrategy: String = "block_only",
     val overrides: Map<Vector3i, OverrideEntry> = emptyMap(),
     val slots: Map<String, Vector3i> = emptyMap(),
     val customData: Map<String, Any> = emptyMap(),
@@ -23,10 +27,11 @@ data class BlueprintConfig(
     val metaDescription: String = "",
     val metaAuthor: String = "",
     val scaffoldMaterials: Map<Material, Material> = emptyMap(),
-    val displayOffset: Vector3i? = null,
+    val displayOffset: Vector3f? = null,
     val scaffoldRotation: Int = 0,
     val assembledRotation: Int = 0,
-    val rotationCenter: Vector3i? = null
+    val rotationCenter: Vector3i? = null,
+    val displayOverrides: Map<Vector3i, DisplayOverride> = emptyMap()
 ) {
     data class OverrideEntry(
         val type: String,
@@ -34,6 +39,17 @@ data class BlueprintConfig(
         val rebarKey: NamespacedKey? = null,
         val previewMaterial: Material? = null,
         val ignoreStates: Set<String> = emptySet()
+    )
+
+    /** 展示实体覆写（按位置键覆盖录制时录入的展示实体） */
+    data class DisplayOverride(
+        val type: String? = null,
+        val block: String? = null,
+        val item: String? = null,
+        val translation: org.joml.Vector3f? = null,
+        val rotation: org.joml.Quaternionf? = null,
+        val scale: org.joml.Vector3f? = null,
+        val group: String? = null
     )
 }
 
@@ -51,6 +67,9 @@ object BlueprintConfigLoader {
         val controllerType = config.getString("controller.type", "rebar") ?: "rebar"
         val controllerRebarKey = config.getString("controller.rebar_key")?.let { parseNamespacedKey(it) }
         val controllerPosition = parsePosition(config.getString("controller.position"))
+        val generatedControllerMaterial = config.getString("controller.generated_material")
+            ?.let { material -> Material.matchMaterial(material) }
+        val formStrategy = config.getString("form_strategy", "block_only") ?: "block_only"
         
         val overrides = mutableMapOf<Vector3i, BlueprintConfig.OverrideEntry>()
         val overridesSection = config.getConfigurationSection("overrides")
@@ -80,16 +99,16 @@ object BlueprintConfigLoader {
         val scaffoldMaterials = mutableMapOf<Material, Material>()
         val scaffoldSection = config.getConfigurationSection("scaffold_materials")
         if (scaffoldSection != null) {
-            for (assembledMatKey in scaffoldSection.getKeys(false)) {
-                val assembledMat = try { Material.valueOf(assembledMatKey.uppercase()) } catch (_: Exception) { continue }
-                val scaffoldMatStr = scaffoldSection.getString(assembledMatKey) ?: continue
+            for (sourceMatKey in scaffoldSection.getKeys(false)) {
+                val sourceMat = try { Material.valueOf(sourceMatKey.uppercase()) } catch (_: Exception) { continue }
+                val scaffoldMatStr = scaffoldSection.getString(sourceMatKey) ?: continue
                 val scaffoldMat = try { Material.valueOf(scaffoldMatStr.uppercase()) } catch (_: Exception) { continue }
-                scaffoldMaterials[assembledMat] = scaffoldMat
+                scaffoldMaterials[sourceMat] = scaffoldMat
             }
         }
 
         val displayOffsetRaw = config.getString("display_offset")
-        val displayOffset = parsePosition(displayOffsetRaw)
+        val displayOffset = parseVector3f(displayOffsetRaw)
         log.debug("config", "display_offset解析", "raw" to displayOffsetRaw, "result" to displayOffset)
 
         val scaffoldRotation = config.getInt("rotation.scaffold", 0)
@@ -104,12 +123,35 @@ object BlueprintConfigLoader {
             log.debug("config", "分阶段旋转配置", "scaffold" to scaffoldRotation, "assembled" to assembledRotation, "center" to rotationCenter)
         }
 
+        // 展示实体覆写
+        val displayOverrides = mutableMapOf<Vector3i, BlueprintConfig.DisplayOverride>()
+        val displaySection = config.getConfigurationSection("display_entities")
+        if (displaySection != null) {
+            for (posKey in displaySection.getKeys(false)) {
+                val pos = parsePosition(posKey) ?: continue
+                val sec = displaySection.getConfigurationSection(posKey) ?: continue
+                val type = sec.getString("type")
+                val block = sec.getString("block")
+                val item = sec.getString("item")
+                val translation = parseVector3f(sec.getString("translation"))
+                val rotation = parseQuaternionf(sec.getString("rotation"))
+                val scale = parseVector3f(sec.getString("scale"))
+                val group = sec.getString("group")
+                displayOverrides[pos] = BlueprintConfig.DisplayOverride(
+                    type = type, block = block, item = item,
+                    translation = translation, rotation = rotation, scale = scale, group = group
+                )
+            }
+        }
+
         return BlueprintConfig(
             id = id,
             version = version,
             controllerType = controllerType,
             controllerRebarKey = controllerRebarKey,
             controllerPosition = controllerPosition,
+            generatedControllerMaterial = generatedControllerMaterial,
+            formStrategy = formStrategy,
             overrides = overrides,
             slots = slots,
             customData = customData,
@@ -120,7 +162,8 @@ object BlueprintConfigLoader {
             displayOffset = displayOffset,
             scaffoldRotation = scaffoldRotation,
             assembledRotation = assembledRotation,
-            rotationCenter = rotationCenter
+            rotationCenter = rotationCenter,
+            displayOverrides = displayOverrides
         )
     }
     
@@ -137,6 +180,8 @@ object BlueprintConfigLoader {
         yaml.set("controller.type", config.controllerType)
         config.controllerRebarKey?.let { yaml.set("controller.rebar_key", "${it.namespace}:${it.key}") }
         config.controllerPosition?.let { yaml.set("controller.position", "${it.x}, ${it.y}, ${it.z}") }
+        config.generatedControllerMaterial?.let { yaml.set("controller.generated_material", it.name.lowercase()) }
+        yaml.set("form_strategy", config.formStrategy)
         
         if (config.overrides.isNotEmpty()) {
             val overridesSection = yaml.createSection("overrides")
@@ -166,8 +211,8 @@ object BlueprintConfigLoader {
         
         if (config.scaffoldMaterials.isNotEmpty()) {
             val scaffoldSection = yaml.createSection("scaffold_materials")
-            for ((assembled, scaffold) in config.scaffoldMaterials) {
-                scaffoldSection.set(assembled.name.lowercase(), scaffold.name.lowercase())
+            for ((source, replacement) in config.scaffoldMaterials) {
+                scaffoldSection.set(source.name.lowercase(), replacement.name.lowercase())
             }
         }
 
@@ -178,6 +223,20 @@ object BlueprintConfigLoader {
             rotationSection.set("scaffold", config.scaffoldRotation)
             rotationSection.set("assembled", config.assembledRotation)
             config.rotationCenter?.let { rotationSection.set("center", "${it.x}, ${it.y}, ${it.z}") }
+        }
+
+        if (config.displayOverrides.isNotEmpty()) {
+            val displaySection = yaml.createSection("display_entities")
+            for ((pos, ov) in config.displayOverrides) {
+                val entry = displaySection.createSection("${pos.x}, ${pos.y}, ${pos.z}")
+                ov.type?.let { entry.set("type", it) }
+                ov.block?.let { entry.set("block", it) }
+                ov.item?.let { entry.set("item", it) }
+                ov.translation?.let { entry.set("translation", "${it.x}, ${it.y}, ${it.z}") }
+                ov.rotation?.let { entry.set("rotation", "${it.x}, ${it.y}, ${it.z}, ${it.w}") }
+                ov.scale?.let { entry.set("scale", "${it.x}, ${it.y}, ${it.z}") }
+                ov.group?.let { entry.set("group", it) }
+            }
         }
 
         yaml.save(file)
@@ -215,6 +274,8 @@ object BlueprintConfigLoader {
         yaml.set("controller.type", "rebar")
         yaml.set("controller.rebar_key", defaultControllerKey)
         yaml.set("controller.position", "${centerPos.x}, ${centerPos.y}, ${centerPos.z}")
+        yaml.set("controller.generated_material", blueprint.controllerMaterial.name.lowercase())
+        yaml.set("form_strategy", "block_only")
         yaml.setComments("controller", listOf(
             "",
             "=== 控制器配置 / Controller Settings ===",
@@ -225,7 +286,16 @@ object BlueprintConfigLoader {
             "              Rebar component namespaced key (format: namespace:key)",
             "- position: 控制器相对于结构原点的坐标 (x, y, z)",
             "             Controller position relative to structure origin",
-            "              +X=东/East, +Y=上/Up, +Z=南/South"
+            "              +X=东/East, +Y=上/Up, +Z=南/South",
+            "- generated_material: 仅当该 rebar_key 未被其他插件注册时，MonolithLib 自动控制器使用的方块材质",
+            "                      Ignored for a pre-registered controller; its Rebar registration owns the material",
+            "",
+            "=== 成型策略 / Form Strategy ===",
+            "控制多方块成型后的外观 / Controls how the multiblock looks after forming",
+            "form_strategy: block_only | full_display | hybrid",
+            "- block_only: 保持为真实方块 (默认) / Keep as real blocks (default)",
+            "- full_display: 全部替换为展示实体 / Replace all with display entities",
+            "- hybrid: 部分替换为展示实体 / Replace specific positions with display entities"
         ))
 
         yaml.createSection("overrides")
@@ -249,12 +319,16 @@ object BlueprintConfigLoader {
             "",
             "=== 槽位定义 / Slot Definitions ===",
             "标记结构中的功能位置 (输入口、输出口等) / Mark functional positions in the structure",
-            "这些数据不会自动传递给Rebar，需在代码中通过 blueprint.getSlotPosition() 主动读取",
-            "This data is NOT auto-passed to Rebar; read via blueprint.getSlotPosition() in your code",
+            "支持任意多个同类端口：使用 input_1、input_2、output_1 等唯一名称",
+            "Use blueprint.getSlotPositions(\"input\") to read input, input_1, input_2 together",
+            "这些数据不会自动传递给 Rebar；控制器需主动读取并决定各端口的库存或物流行为",
+            "This data is NOT auto-passed to Rebar; the controller owns inventory and transfer behavior",
             "格式示例 / Format example:",
             "  slots:",
-            "    input: \"0, 1, 0\"    # 输入口坐标 / Input position",
-            "    output: \"4, 1, 0\"   # 输出口坐标 / Output position"
+            "    input_1: \"0, 1, 0\"   # 输入端口 1 / Input port 1",
+            "    input_2: \"0, 1, 2\"   # 输入端口 2 / Input port 2",
+            "    output_1: \"4, 1, 0\"  # 输出端口 1 / Output port 1",
+            "    output_2: \"4, 1, 2\"  # 输出端口 2 / Output port 2"
         ))
 
         yaml.createSection("custom")
@@ -280,19 +354,19 @@ object BlueprintConfigLoader {
         val scaffoldSection = yaml.createSection("scaffold_materials")
         scaffoldSection.set("iron_block", "concrete")
         scaffoldSection.set("gold_block", "concrete_powder")
-        scaffoldSection.set("_comment", "assembled -> scaffold, 组装材料->脚手架材料的映射 / Material mapping for dual-stage building")
         yaml.setComments("scaffold_materials", listOf(
             "",
             "=== 脚手架材料映射 / Scaffold Material Mapping ===",
-            "双阶段建造系统: 先用廉价材料搭建脚手架，再替换为最终材料",
-            "Dual-stage build: First build scaffold with cheap materials, then replace with final ones",
-            "- 键(Key): 组装阶段使用的原始材料 / Material used in assembled stage",
-            "- 值(Value): 脚手架阶段使用的替代材料 / Replacement material for scaffold stage",
+            "批量替换脚手架阶段中匹配材料的方块；不会修改 assembled 阶段",
+            "Bulk replacement for matching blocks in the scaffold stage only; assembled is unchanged",
+            "- 键(Key): 脚手架原材料 / Source material in the scaffold stage",
+            "- 值(Value): 该材料在脚手架中要替换成的材料 / Scaffold replacement material",
+            "- 单个位置需要特殊处理时，overrides 优先于此映射",
+            "  Position Overrides take precedence for individual positions",
             "常见映射 / Common mappings:",
-            "  iron_block -> concrete           铁块→混凝土",
-            "  gold_block -> concrete_powder    金块→混凝土粉末",
-            "  diamond_block -> concrete        钻石块→混凝土",
-            "不在此列表中的材料，两个阶段使用相同方块 / Materials not listed use same block in both stages"
+            "  iron_block: concrete           脚手架中的铁块批量替换为混凝土",
+            "  gold_block: concrete_powder    脚手架中的金块批量替换为混凝土粉末",
+            "不在此列表中的脚手架方块保持不变 / Unlisted scaffold blocks are unchanged"
         ))
 
         yaml.set("display_offset", "1, 0, 1")
@@ -380,6 +454,20 @@ object BlueprintConfigLoader {
         } catch (e: Exception) {
             null
         }
+    }
+
+    private fun parseVector3f(str: String?): org.joml.Vector3f? {
+        if (str == null) return null
+        val parts = str.split(",").map { it.trim().toFloatOrNull() ?: return null }
+        if (parts.size != 3) return null
+        return org.joml.Vector3f(parts[0], parts[1], parts[2])
+    }
+
+    private fun parseQuaternionf(str: String?): org.joml.Quaternionf? {
+        if (str == null) return null
+        val parts = str.split(",").map { it.trim().toFloatOrNull() ?: return null }
+        if (parts.size != 4) return null
+        return org.joml.Quaternionf(parts[0], parts[1], parts[2], parts[3])
     }
     
     private fun parseOverrideEntry(section: org.bukkit.configuration.ConfigurationSection): BlueprintConfig.OverrideEntry? {

@@ -40,25 +40,28 @@ item:
     name: "<gold>Custom Controller"
     lore:
       - "<gray>A universal controller for custom structures"
-  blueprint_table:
-    name: "<gold>Blueprint Table"
-    lore:
-      - "<gray>Place to create blueprint items"
   virtual_display_anchor:
     name: "<gray>Virtual Display Anchor"
     lore:
       - "<gray>Anchor block for virtual display entities"
   selection_wand:
     name: "<yellow>Selection Wand"
-    lore_0: "<gray>Left-click to set position A"
-    lore_1: "<gray>Right-click to set position B"
-    lore_2: "<gray>Then use /ml save <name> to save"
-  blueprint_item:
-    name: "<aqua>Blueprint: %blueprint_id%"
-    lore:
-      - "<gray>Blueprint: <white>%blueprint_id%</white>"
-      - "<gray>Size: <white>%size%</white>"
-      - "<gray>Right-click in air to place build site"
+    lore: |-
+      <gray>Left-click to set position A
+      <gray>Right-click to set position B
+      <gray>Use /ml save scaffold|assembled <id>
+  build_site_anchor:
+    name: "<gold>Build Site Anchor: %blueprint_id%"
+    lore: |-
+      <gray>Right-click block → preview & create build site
+      <gray>Right-click again to confirm placement
+      <gray>After building, use MultiblockWrench to finalize
+  multiblock_wrench:
+    name: "<gold>Multiblock Wrench"
+    lore: |-
+      <gray>Right-click anchor → finalize multiblock
+      <gray>Shift+right-click formed multiblock → disassemble
+      <gray>Ensure all blocks are placed before finalizing
 
 # ──────────────────────────────────────────────
 # CHAT  —  All player-facing chat messages
@@ -81,7 +84,7 @@ chat:
     err_no_pos1: "<red>[MonolithLib] Left-click to set Pos1 first!</red>"
     err_different_world: "<red>[MonolithLib] Pos1 and Pos2 must be in the same world!</red>"
     pos2_set: "<green>[MonolithLib] Pos2 <white>set to (%x%, %y%, %z%)</white>"
-    hint_save: "<gray>[MonolithLib] Use /ml save &lt;name&gt; to save as .raw.mnb</gray>"
+    hint_save: "<gray>Use /ml save scaffold <id>, then /ml save assembled <id></gray>"
 
   # ─── Command system ───
   command:
@@ -99,92 +102,111 @@ chat:
       section_build: "<yellow>/ml build</yellow> <gray>- Construction commands</gray>"
       section_bp: "<yellow>/ml bp</yellow> <gray>- Blueprint management</gray>"
       section_site: "<yellow>/ml site</yellow> <gray>- Build site management</gray>"
-      section_edit: "<yellow>/ml edit</yellow> <gray>- Editor tools <red>[OP]</red></gray>"
+      section_edit: "<yellow>/ml wand | save | merge</yellow> <gray>- MNB editor <red>[OP]</red></gray>"
       section_reload: "<yellow>/ml reload</yellow> <gray>- Reload all structures <red>[Admin]</red></gray>"
 
-      # Reload
-      reload_starting: "<green>[MonolithLib] Reloading...</green>"
-      reload_complete: "<green>[MonolithLib] Reload complete! Loaded %count% structures.</green>"
+    # Reload
+    reload_starting: "<green>[MonolithLib] Reloading...</green>"
+    reload_complete: "<green>[MonolithLib] Reload complete! Loaded %count% structures.</green>"
 
-      # List blueprints
-      list_title: "<gold><bold>[MonolithLib]</bold> <white>Registered Blueprints (%count%)</white></gold>"
-      list_entry: "  <gray>-</gray> <white>%id%</white> <gray>(%size%, %block_count% blocks)%rebar_tag%</gray>"
-      list_empty: "<yellow>No registered blueprints found.</yellow>"
-      list_hint: "<gray>Tip: Place .schem/.litematic/.nbt files in %path%</gray>"
-      list_formats: "<gray>Supported formats: <white>.mnb, .schem, .litematic, .nbt</white></gray>"
+    # List blueprints
+    list_title: "<gold><bold>[MonolithLib]</bold> <white>Registered Blueprints (%count%)</white></gold>"
+    list_entry: "  <gray>-</gray> <white>%id%</white> <gray>(%size%, %block_count% blocks)%rebar_tag%</gray>"
+    list_empty: "<yellow>No registered blueprints found.</yellow>"
+    list_hint: "<gray>Tip: Place .schem/.litematic/.nbt files in %path%</gray>"
+    list_formats: "<gray>Supported formats: <white>.mnb, .schem, .litematic, .nbt</white></gray>"
 
-      # Info
-      info_title: "<gold><bold>[MonolithLib]</bold> <white>Plugin Information</white></gold>"
-      info_version: "<gray>Version:</gray>       <white>%version%</white>"
-      info_registered: "<gray>Blueprints:</gray>    <white>%count%</white>"
-      info_import_dir: "<gray>Import dir:</gray>    <white>%path%</white>"
-      info_blueprint_dir: "<gray>Blueprint dir:</gray> <white>%path%</white>"
-      info_product_dir: "<gray>Product dir:</gray>   <white>%path%</white>"
-      info_formats: "<gray>Formats:</gray>       <white>.mnb, .schem, .litematic, .nbt</white>"
-      info_rebar_enabled: "<green>Enabled</green>"
-      info_rebar_disabled: "<red>Not detected</red>"
-      info_rebar_integration: "<gray>Rebar integration:</gray> %status%"
-      info_bp_title: "<gold><bold>[Blueprint]</bold> <white>%id%</white></gold>"
-      info_bp_size: "<gray>Size:</gray>         <white>%x% x %y% x %z%</white>"
-      info_bp_blocks: "<gray>Block count:</gray>  <white>%count%</white>"
-      info_bp_name: "<gray>Name:</gray>         <white>%name%</white>"
-      info_bp_desc: "<gray>Description:</gray>  <white>%desc%</white>"
-      info_bp_not_found: "<red>Blueprint not found: %id%</red>"
+    # Info
+    info_title: "<gold><bold>[MonolithLib]</bold> <white>Plugin Information</white></gold>"
+    info_version: "<gray>Version:</gray>       <white>%version%</white>"
+    info_registered: "<gray>Blueprints:</gray>    <white>%count%</white>"
+    info_import_dir: "<gray>Import dir:</gray>    <white>%path%</white>"
+    info_blueprint_dir: "<gray>Blueprint dir:</gray> <white>%path%</white>"
+    info_product_dir: "<gray>Product dir:</gray>   <white>%path%</white>"
+    info_formats: "<gray>Formats:</gray>       <white>.mnb, .schem, .litematic, .nbt</white>"
+    info_rebar_enabled: "<green>Enabled</green>"
+    info_rebar_disabled: "<red>Not detected</red>"
+    info_rebar_integration: "<gray>Rebar integration:</gray> %status%"
+    info_bp_title: "<gold><bold>[Blueprint]</bold> <white>%id%</white></gold>"
+    info_bp_size: "<gray>Size:</gray>         <white>%x% x %y% x %z%</white>"
+    info_bp_blocks: "<gray>Block count:</gray>  <white>%count%</white>"
+    info_bp_stage_blocks: "<gray>Stage blocks:</gray> <white>scaffold %scaffold% / assembled %assembled%</white>"
+    info_bp_displays: "<gray>Display entities:</gray> <white>%total%</white> <gray>(block %blocks%, item %items%, groups %groups%)</gray>"
+    info_bp_controller: "<gray>Controller:</gray>   <white>%key%</white> <gray>(registered: %registered%)</gray>"
+    info_bp_strategy: "<gray>Form strategy:</gray> <white>%strategy%</white>"
+    info_bp_offsets: "<gray>Offsets:</gray>      <white>controller %controller% / display %display%</white>"
+    info_bp_name: "<gray>Name:</gray>         <white>%name%</white>"
+    info_bp_desc: "<gray>Description:</gray>  <white>%desc%</white>"
+    info_bp_not_found: "<red>Blueprint not found: %id%</red>"
 
-      # Blueprint give
-      bp_given: "<green>[MonolithLib] Gave blueprint: %id%</green>"
-      bp_not_found: "<red>Blueprint not found: %id%</red>"
-      bp_no_id: "<red>Please specify a blueprint ID.</red>"
-      bp_hint: "<gray>Usage: /ml bp give <blueprint_id></gray>"
-      bp_inventory_full: "<red>[MonolithLib] Inventory full, item dropped on ground.</red>"
+    # Blueprint give
+    bp_given: "<green>[MonolithLib] Gave blueprint: %id%</green>"
+    bp_not_found: "<red>Blueprint not found: %id%</red>"
+    bp_no_id: "<red>Please specify a blueprint ID.</red>"
+    bp_hint: "<gray>Usage: /ml bp give <blueprint_id></gray>"
+    bp_inventory_full: "<red>[MonolithLib] Inventory full, item dropped on ground.</red>"
 
-      # Usage errors (generic)
-      err_usage_preview: "<red>Usage: /ml preview <blueprint_id> [facing]</red>"
-      err_usage_preview_stop: "<gray>  stop              Stop preview</gray>"
-      err_usage_build: "<red>Usage: /ml build <here|easy|printer></red>"
-      err_usage_build_here: "<gray>  here <ID> [facing]  Quick build at location</gray>"
-      err_usage_build_easy: "<gray>  easy [on|off]       Toggle easy-build mode</gray>"
-      err_usage_build_printer: "<gray>  printer [on|off]    Toggle auto-printer mode</gray>"
-      err_usage_bp: "<red>Usage: /ml bp <list|info|give></red>"
-      err_usage_bp_list: "<gray>  list              List all blueprints</gray>"
-      err_usage_bp_info: "<gray>  info <ID>         Show blueprint details</gray>"
-      err_usage_bp_give: "<gray>  give <ID>         Give blueprint item</gray>"
-      err_usage_site: "<red>Usage: /ml site <list|info|cancel></red>"
-      err_usage_site_list: "<gray>  list              List active build sites</gray>"
-      err_usage_site_info: "<gray>  info              Nearby site status</gray>"
-      err_usage_site_cancel: "<gray>  cancel            Cancel nearby site</gray>"
-      err_usage_edit: "<red>Usage: /ml edit <wand|save|merge></red>"
-      err_usage_edit_wand: "<gray>  wand              Get selection wand</gray>"
-      err_usage_edit_save: "<gray>  save <name> [--scaffold|--assembled]</gray>"
-      err_usage_edit_merge: "<gray>  merge <a> <b>      Merge two structures</gray>"
+    # Usage errors (generic)
+    err_usage_preview: "<red>Usage: /ml preview <blueprint_id> [facing]</red>"
+    err_usage_preview_stop: "<gray>  stop              Stop preview</gray>"
+    err_usage_build: "<red>Usage: /ml build <here|printer></red>"
+    err_usage_build_here: "<gray>  here <ID> [facing]  Quick build at location</gray>"
+    err_usage_build_easy: "<gray>  easybuild [on|off]   Toggle easy-build mode</gray>"
+    err_usage_build_printer: "<gray>  printer [on|off]    Toggle auto-printer mode</gray>"
+    err_usage_bp: "<red>Usage: /ml bp <list|info|give></red>"
+    err_usage_bp_list: "<gray>  list              List all blueprints</gray>"
+    err_usage_bp_info: "<gray>  info <ID>         Show blueprint details</gray>"
+    err_usage_bp_give: "<gray>  give <ID>         Give blueprint item</gray>"
+    err_usage_site: "<red>Usage: /ml site <list|info|cancel></red>"
+    err_usage_site_list: "<gray>  list              List active build sites</gray>"
+    err_usage_site_info: "<gray>  info              Nearby site status</gray>"
+    err_usage_site_cancel: "<gray>  cancel            Cancel nearby site</gray>"
+    err_usage_edit: "<red>Usage: /ml wand | /ml save <stage> <id> | /ml merge <id></red>"
+    err_usage_edit_wand: "<gray>  wand              Get selection wand</gray>"
+    err_usage_edit_save: "<gray>  save <name> [--scaffold|--assembled]</gray>"
 
-      # Subcommand errors
-      err_unknown_subcmd_preview: "<red>Unknown subcommand: %arg%</red>"
-      err_available_preview: "<gray>Available: show, stop</gray>"
-      err_unknown_subcmd_build: "<red>Unknown subcommand: %arg%</red>"
-      err_available_build: "<gray>Available: here, easy, printer</gray>"
-      err_unknown_subcmd_bp: "<red>Unknown subcommand: %arg%</red>"
-      err_available_bp: "<gray>Available: list, info, give</gray>"
-      err_unknown_subcmd_site: "<red>Unknown subcommand: %arg%</red>"
-      err_available_site: "<gray>Available: list, info, cancel</gray>"
-      err_unknown_subcmd_edit: "<red>Unknown subcommand: %arg%</red>"
-      err_available_edit: "<gray>Available: wand, save, merge</gray>"
+    # Subcommand errors
+    err_unknown_subcmd_preview: "<red>Unknown subcommand: %arg%</red>"
+    err_available_preview: "<gray>Available: show, stop</gray>"
+    err_unknown_subcmd_build: "<red>Unknown subcommand: %arg%</red>"
+    err_available_build: "<gray>Available: here, printer</gray>"
+    err_unknown_subcmd_bp: "<red>Unknown subcommand: %arg%</red>"
+    err_available_bp: "<gray>Available: list, info, give</gray>"
+    err_unknown_subcmd_site: "<red>Unknown subcommand: %arg%</red>"
+    err_available_site: "<gray>Available: list, info, cancel</gray>"
+    err_unknown_subcmd_edit: "<red>Unknown subcommand: %arg%</red>"
+    err_available_edit: "<gray>Available: wand, save</gray>"
 
-      # Blueprint not found (shared)
-      err_blueprint_not_found: "<red>Blueprint not found: %id%</red>"
-      err_hint_bp_list: "<gray>Use /ml bp list to view available blueprints</gray>"
+    # Blueprint not found (shared)
+    err_blueprint_not_found: "<red>Blueprint not found: %id%</red>"
+    err_hint_bp_list: "<gray>Use /ml bp list to view available blueprints</gray>"
 
-      # Build failed
-      err_build_failed: "<red>[MonolithLib] Failed to start construction.</red>"
+    # Build failed
+    err_build_failed: "<red>[MonolithLib] Failed to start construction.</red>"
 
-      # Edit-specific
-      edit_no_selection: "<red>Please select an area with the Selection Wand first.</red>"
-      edit_save_dev: "<yellow>Edit save feature is under development...</yellow>"
-      edit_save_failed: "<red>Save failed: %error%</red>"
-      edit_merge_dev: "<yellow>Edit merge feature is under development...</yellow>"
-      edit_merge_failed: "<red>Merge failed: %error%</red>"
-      wand_given: "<green>[MonolithLib] Received Selection Wand.</green>"
-      wand_hint: "<gray>Left-click to set point A, right-click to set point B</gray>"
+    # Edit-specific
+    edit_no_selection: "<red>Please select an area with the Selection Wand first.</red>"
+    edit_save_failed: "<red>Save failed: %error%</red>"
+    edit_saved: "<green>[MonolithLib] Blueprint saved: <white>%name%</white> (%count% blocks)</green>"
+    edit_save_scaffold_done: "<green>[MonolithLib] Scaffold stage recorded: <white>%name%</white> (%count% blocks)</green>"
+    edit_save_assembled_done: "<green>[MonolithLib] Assembled stage recorded: <white>%name%</white> (%count% blocks, %entity_count% displays)</green>"
+    edit_err_size_mismatch: "<red>[MonolithLib] Stage size mismatch! Scaffold %scaffold% vs assembled %assembled%.</red>"
+    edit_save_scaffold_hint: "<gray>Run /ml save assembled %name% next</gray>"
+    edit_save_assembled_hint: "<gray>Run /ml save scaffold %name% next</gray>"
+    wand_given: "<green>[MonolithLib] Received Selection Wand.</green>"
+    wand_hint: "<gray>Left-click to set point A, right-click to set point B</gray>"
+    err_save_usage: "<red>Usage: /ml save <scaffold|assembled> <id> [--no-displays]</red>"
+    saved_with_path: "<green>[MonolithLib] Saved %stage% stage: %blocks% blocks, %displays% display entities</green> <gray>%path%</gray>"
+    err_merge_usage: "<red>Usage: /ml merge <id></red>"
+    err_merge_failed: "<red>Merge failed: %error%</red>"
+    merged: "<green>[MonolithLib] Merged %count% blocks: %path%</green>"
+
+    project:
+      usage_reload: "<yellow>Usage: /ml project reload <id></yellow>"
+      usage_test: "<yellow>Usage: /ml project test <id></yellow>"
+      reloaded: "<green>[MonolithLib] Reloaded project %id%: %source%</green>"
+      test_kit_granted: "<gray>Test kit granted: anchor, scaffold materials, wrench, and any sample recipe inputs.</gray>"
+      formed_unchanged: "<gray>Formed structures are unchanged; Shift+right-click with the wrench to disassemble and form again.</gray>"
 
     # Site list & detail
     site:
@@ -263,15 +285,35 @@ chat:
 
     # New build site messages
     err_vm_zone_block: "<red>[MonolithLib] Cannot place blocks in virtual machine area</red>"
-    preview_cancelled_hotbar: "<yellow>[MonolithLib] Preview cancelled (hotbar switched)</yellow>"
+    preview_cancelled_hotbar_hint: "<yellow>[MonolithLib] Preview cancelled (hotbar switched)</yellow>"
     err_position_in_site: "<red>[MonolithLib] Position is already within a build site</red>"
     preview_moved: "<green><bold>[MonolithLib]</bold> <white>Preview moved to new position</white></green>"
     preview_rotated: "<green><bold>[MonolithLib]</bold> <white>Preview rotated to new direction</white></green>"
     preview_confirm_hint: "<green><bold>[MonolithLib]</bold> <white>Right-click same location again to <yellow>confirm creation</yellow></white></green>"
     preview_timeout_hint: "<gray>(Valid for 30 seconds, moving far away will cancel)</gray>"
+    err_location_conflict: "<red>[MonolithLib] Build site location conflict, cannot place</red>"
+    err_place_anchor_failed: "<red>[MonolithLib] Failed to place anchor</red>"
+    created_hint_1: "<gray>Place blocks following the ghost preview</gray>"
+    created_hint_2: "<gray>After completion, use Multiblock Wrench to finalize</gray>"
+    completed_hint: "<green>[MonolithLib] All blocks placed! Use Multiblock Wrench to finalize</green>"
+    cancelled_hint: "<gray>[MonolithLib] Build site cancelled</gray>"
+    finalized: "<green>[MonolithLib] Multiblock structure finalized!</green>"
     all_layers_complete_hint: "<yellow>[MonolithLib] All layers complete, place core controller</yellow>"
     structure_disassembled_retry: "<yellow>[MonolithLib] Structure disassembled, re-entering build mode (layer: %layer%)</yellow>"
     structure_disassembled_retry_no_layer: "<yellow>[MonolithLib] Structure disassembled, re-entering build mode</yellow>"
+
+  # ─── Wrench (Multiblock Wrench) ───
+  wrench:
+    err_not_valid_structure: "<red>[MonolithLib] This is not a valid multiblock structure or build site anchor</red>"
+    err_no_blueprint: "<red>[MonolithLib] This anchor has no associated blueprint</red>"
+    err_not_complete: "<red>[MonolithLib] Not yet complete! Rate: %rate%% (missing %missing% blocks)</red>"
+    hint_continue_building: "<gray>Continue placing blocks and use the wrench again when all blocks are ready</gray>"
+    err_finalize_failed: "<red>[MonolithLib] Finalization failed: could not place controller block</red>"
+    err_controller_not_registered: "<red>[MonolithLib] Controller %key% is not registered; formation is blocked</red>"
+    hint_shift_disassemble: "<gray>Use Shift+right-click to disassemble a formed structure</gray>"
+    err_no_blueprint_controller: "<red>[MonolithLib] This multiblock has no associated blueprint</red>"
+    disassemble_success: "<green>[MonolithLib] Disassembled: build site restored, continue building</green>"
+    err_disassemble_failed: "<red>[MonolithLib] Disassembly failed: could not place build site anchor</red>"
 
   # ─── Build Mode (EasyBuild + Printer merged) ───
   build_mode:
@@ -279,12 +321,12 @@ chat:
     easybuild_enabled: "<green>[MonolithLib] Easy-Build mode enabled</green>"
     easybuild_hint_1: "<gray>Right-click ghost blocks to auto-place matching blocks</gray>"
     easybuild_hint_2: "<gray>No materials required in creative mode</gray>"
-    easybuild_hint_3: "<gray>Auto-disables after 1 minute away from build site</gray>"
+    easybuild_hint_3: "<gray>Auto-disables after 5 seconds away from build site</gray>"
     easybuild_disabled: "<red>[MonolithLib] Easy-Build mode disabled</red>"
     printer_enabled: "<green>[MonolithLib] Auto-Printer mode enabled</green>"
-    printer_hint_1: "<gray>Auto-places ghost blocks within 4 blocks of player</gray>"
+    printer_hint_1: "<gray>Auto-places ghost blocks within 3 blocks of player</gray>"
     printer_hint_2: "<gray>No materials required in creative mode</gray>"
-    printer_hint_3: "<gray>Auto-disables after 1 minute away from build site</gray>"
+    printer_hint_3: "<gray>Auto-disables after 5 seconds away from build site</gray>"
     printer_disabled: "<red>[MonolithLib] Auto-Printer mode disabled</red>"
 
     # Common mode errors
@@ -303,3 +345,64 @@ chat:
     shell_complete: "<green>[MonolithLib] Shell complete! Please place core controller to activate</green>"
     shell_controller: "<gray>Controller:</gray> <white>%key%</white>"
     restored_sites: "[MonolithLib] Restored %count% persisted build sites"
+    shell_complete_no_core: "<green>[MonolithLib] Shell complete!</green>"
+
+  preview:
+    started: "<green>Preview started: %structure_id% (%facing%)</green>"
+    stopped: "<green>Stopped %count% preview(s)</green>"
+    expired: "<yellow>Preview expired</yellow>"
+    err_no_active: "<red>No active preview</red>"
+    layer_changed: "<green>Layer changed to %layer%</green>"
+    layer_up: "<green>Moved to the next layer</green>"
+    layer_down: "<green>Moved to the previous layer</green>"
+    err_layer_top: "<red>Already at the top layer</red>"
+    err_layer_bottom: "<red>Already at the bottom layer</red>"
+    err_layer_invalid: "<red>Invalid layer: %layer%</red>"
+    err_layer_out_of_range: "<red>Layer is out of range</red>"
+    current_layer: "<gray>Layer: <white>%current%/%max%</white></gray>"
+    current_position: "<gray>Position: <white>%x%, %y%, %z%</white></gray>"
+    hint_layer_command: "<gray>Use /ml preview layer up/down to change layers</gray>"
+    progress: "<gray>Progress: <white>%correct%/%total%</white> %completed%</gray>"
+    completed: "<green>Structure %structure_id% completed!</green>"
+    err_controller_broken: "<red>Controller broken; preview cancelled</red>"
+    err_not_found: "<red>Structure not found: %structure_id%</red>"
+    hint_start_preview: "<gray>Use /ml preview <ID> to start a preview</gray>"
+    will_expire: "<gray>Preview will disappear in 30 seconds</gray>"
+    cancelled: "<green>Preview cancelled</green>"
+    err_create_failed: "<red>Could not create preview</red>"
+    summary_title: "<yellow>========== Build Site Preview ==========</yellow>"
+    summary_blueprint: "<gray>Blueprint: <white>%blueprint_id%</white></gray>"
+    summary_facing: "<gray>Facing: <white>%facing%</white></gray>"
+    summary_range: "<gray>Range: <white>%width% x %height% x %depth%</white></gray>"
+    summary_position: "<gray>Position: <white>%min% ~ %max%</white></gray>"
+    summary_valid: "<green>Validation passed</green>"
+    summary_errors: "<red>Detected %count% issue(s)</red>"
+    summary_error_item: "<red>- %message%</red>"
+    summary_warning: "<yellow>Warnings:</yellow>"
+    summary_warning_item: "<yellow>- %message%</yellow>"
+    summary_confirm: "<gray>Right-click to confirm, sneak+right-click to cancel</gray>"
+    summary_expire: "<gray>Preview expires in <red>30 seconds</red></gray>"
+    summary_footer: "<yellow>==============================</yellow>"
+    timeout_cancelled: "<red>Preview timed out</red>"
+    timeout_countdown: "<yellow>Preview expires in <red>%countdown%s</red></yellow>"
+    err_empty_stage: "<red>Blueprint '%id%' has no assembled blocks</red>"
+    build_finished: "<green>Blueprint build completed!</green>"
+    controller_broken_cancel: "<red>Controller broken; preview cancelled</red>"
+    timeout_auto_cancel: "<yellow>Preview timed out (30 seconds)</yellow>"
+    structure_completed: "<green>Structure %id% completed!</green>"
+    structure_ctrl_broken: "<red>Controller broken; preview cancelled</red>"
+
+  builder:
+    err_world_unloaded: "<red>[MonolithLib] World is unloaded</red>"
+    err_conflicting_blocks: "<red>[MonolithLib] Build area contains conflicting blocks</red>"
+    conflict_positions: "<gray>Conflict positions: <white>%positions%</white></gray>"
+    more_conflicts: "<gray>... and %count% more</gray>"
+    err_insufficient_materials: "<red>[MonolithLib] Not enough materials</red>"
+    missing_material: "<gray>- %material%: missing %count%</gray>"
+    err_world_unloaded_cancelled: "<red>[MonolithLib] World unloaded; build cancelled</red>"
+    progress: "<green>Build progress: %placed%/%total% (%progress%)</green>"
+    start_build: "<green>Starting build: %blueprint_id%</green>"
+    build_info: "<gray>%count% blocks, up to 500 per tick</gray>"
+    cancelled: "<yellow>Build cancelled</yellow>"
+    complete: "<green>Build completed!</green>"
+    structure_info: "<gray>Structure: <white>%blueprint_id%</white></gray>"

@@ -1,13 +1,15 @@
 package top.mc506lw.monolith.core.model
 
 import org.bukkit.NamespacedKey
+import org.joml.Vector3f
 import top.mc506lw.monolith.core.math.Vector3i
 
 data class BlueprintMeta(
     val displayName: String = "",
     val description: String = "",
     val controllerOffset: Vector3i = Vector3i.ZERO,
-    val displayOffset: Vector3i = Vector3i.ZERO
+    val displayOffset: Vector3f = Vector3f(),
+    val author: String = ""
 )
 
 class Blueprint(
@@ -17,7 +19,9 @@ class Blueprint(
     val displayEntities: List<DisplayEntityData> = emptyList(),
     val slots: Map<String, Vector3i> = emptyMap(),
     val customData: Map<String, Any> = emptyMap(),
-    val controllerRebarKey: NamespacedKey? = null
+    val controllerRebarKey: NamespacedKey? = null,
+    val controllerMaterial: org.bukkit.Material = org.bukkit.Material.STRUCTURE_BLOCK,
+    val formStrategy: FormStrategy = FormStrategy.BlockOnly
 ) {
     val scaffoldShape: Shape get() = stages[BuildStage.SCAFFOLD] ?: stages.values.firstOrNull() ?: Shape.EMPTY
     val assembledShape: Shape get() = stages[BuildStage.ASSEMBLED] ?: stages.values.firstOrNull() ?: Shape.EMPTY
@@ -31,6 +35,12 @@ class Blueprint(
     val shape: Shape get() = assembledShape
 
     fun getSlotPosition(slotId: String): Vector3i? = slots[slotId]
+
+    /** Returns the base slot and all numbered ports, for example input, input_1, input_2. */
+    fun getSlotPositions(slotType: String): Map<String, Vector3i> = slots
+        .filterKeys { it == slotType || it.startsWith("${slotType}_") }
+        .toSortedMap()
+
     fun getCustomData(key: String): Any? = customData[key]
     fun getCustomString(key: String): String? = customData[key] as? String
     fun getCustomInt(key: String): Int? = (customData[key] as? Number)?.toInt()
@@ -48,12 +58,33 @@ class Blueprint(
             )
         }
 
-        fun fromSingleShape(id: String, shape: Shape, meta: BlueprintMeta, displayEntities: List<DisplayEntityData>?): Blueprint {
+        fun fromSingleShape(
+            id: String, shape: Shape, meta: BlueprintMeta,
+            displayEntities: List<DisplayEntityData>?
+        ): Blueprint {
             return Blueprint(
                 id = id,
                 stages = mapOf(BuildStage.SCAFFOLD to shape, BuildStage.ASSEMBLED to shape),
                 meta = meta,
                 displayEntities = displayEntities ?: emptyList()
+            )
+        }
+
+        fun fromSingleShape(
+            id: String, shape: Shape, meta: BlueprintMeta,
+            displayEntities: List<DisplayEntityData>?,
+            formStrategy: FormStrategy = FormStrategy.BlockOnly,
+            controllerRebarKey: NamespacedKey? = null,
+            controllerMaterial: org.bukkit.Material = org.bukkit.Material.STRUCTURE_BLOCK
+        ): Blueprint {
+            return Blueprint(
+                id = id,
+                stages = mapOf(BuildStage.SCAFFOLD to shape, BuildStage.ASSEMBLED to shape),
+                meta = meta,
+                displayEntities = displayEntities ?: emptyList(),
+                formStrategy = formStrategy,
+                controllerRebarKey = controllerRebarKey,
+                controllerMaterial = controllerMaterial
             )
         }
     }
@@ -68,6 +99,8 @@ class BlueprintBuilder(private val id: String) {
     private val slots = mutableMapOf<String, Vector3i>()
     private val customData = mutableMapOf<String, Any>()
     private var controllerRebarKey: NamespacedKey? = null
+    private var controllerMaterial: org.bukkit.Material = org.bukkit.Material.STRUCTURE_BLOCK
+    private var formStrategy: FormStrategy = FormStrategy.BlockOnly
 
     fun shape(shape: Shape): BlueprintBuilder {
         this.singleShape = shape
@@ -110,12 +143,16 @@ class BlueprintBuilder(private val id: String) {
     }
 
     fun displayOffset(x: Int, y: Int, z: Int): BlueprintBuilder {
-        this.meta = meta.copy(displayOffset = Vector3i(x, y, z))
+        return displayOffset(x.toFloat(), y.toFloat(), z.toFloat())
+    }
+
+    fun displayOffset(x: Float, y: Float, z: Float): BlueprintBuilder {
+        this.meta = meta.copy(displayOffset = Vector3f(x, y, z))
         return this
     }
 
-    fun displayOffset(offset: Vector3i): BlueprintBuilder {
-        this.meta = meta.copy(displayOffset = offset)
+    fun displayOffset(offset: Vector3f): BlueprintBuilder {
+        this.meta = meta.copy(displayOffset = Vector3f(offset))
         return this
     }
 
@@ -149,6 +186,16 @@ class BlueprintBuilder(private val id: String) {
         return this
     }
 
+    fun controllerMaterial(material: org.bukkit.Material): BlueprintBuilder {
+        this.controllerMaterial = material
+        return this
+    }
+
+    fun formStrategy(strategy: FormStrategy): BlueprintBuilder {
+        this.formStrategy = strategy
+        return this
+    }
+
     fun build(): Blueprint {
         val stages = if (scaffoldShape != null || assembledShape != null) {
             val scaffold = scaffoldShape ?: assembledShape
@@ -170,7 +217,9 @@ class BlueprintBuilder(private val id: String) {
             displayEntities = displayEntities.toList(),
             slots = slots.toMap(),
             customData = customData.toMap(),
-            controllerRebarKey = controllerRebarKey
+            controllerRebarKey = controllerRebarKey,
+            controllerMaterial = controllerMaterial,
+            formStrategy = formStrategy
         )
     }
 }

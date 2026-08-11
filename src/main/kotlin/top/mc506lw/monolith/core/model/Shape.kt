@@ -77,13 +77,12 @@ class Shape(
     val blocks: List<BlockEntry>,
     val boundingBox: BoundingBox
 ) {
+    private val blocksByPosition: Map<Vector3i, BlockEntry> by lazy { blocks.associateBy { it.position } }
     val blockCount: Int get() = blocks.size
     
     constructor(blocks: List<BlockEntry>) : this(blocks, BoundingBox.fromBlocks(blocks))
     
-    fun getBlockAt(x: Int, y: Int, z: Int): BlockEntry? {
-        return blocks.find { it.position.x == x && it.position.y == y && it.position.z == z }
-    }
+    fun getBlockAt(x: Int, y: Int, z: Int): BlockEntry? = blocksByPosition[Vector3i(x, y, z)]
     
     fun getBlocksInLayer(y: Int): List<BlockEntry> {
         return blocks.filter { it.position.y == y }

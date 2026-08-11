@@ -25,6 +25,8 @@ class BlueprintDSL(private val id: String) {
     private var metaDescription: String = ""
     private var metaAuthor: String = ""
     private var metaVersion: String = "1.0"
+    private var formStrategy: top.mc506lw.monolith.core.model.FormStrategy = top.mc506lw.monolith.core.model.FormStrategy.BlockOnly
+    private var controllerMaterial: org.bukkit.Material = org.bukkit.Material.STRUCTURE_BLOCK
     
     private data class BlockEntry(val x: Int, val y: Int, val z: Int, val predicate: Predicate, val slotId: String? = null)
     
@@ -103,6 +105,14 @@ class BlueprintDSL(private val id: String) {
         slots[slotId] = Vector3i(x, y, z)
     }
     
+    fun formStrategy(strategy: top.mc506lw.monolith.core.model.FormStrategy) {
+        this.formStrategy = strategy
+    }
+
+    fun controllerMaterial(material: org.bukkit.Material) {
+        this.controllerMaterial = material
+    }
+
     fun meta(name: String, description: String = "", author: String = "", version: String = "1.0") {
         this.metaName = name
         this.metaDescription = description
@@ -123,13 +133,16 @@ class BlueprintDSL(private val id: String) {
         val meta = BlueprintMeta(
             displayName = metaName,
             description = metaDescription,
-            controllerOffset = centerOffset
+            controllerOffset = centerOffset,
+            author = metaAuthor
         )
         
         return Blueprint(
             id = id,
             stages = mapOf(BuildStage.SCAFFOLD to shape, BuildStage.ASSEMBLED to shape),
-            meta = meta
+            meta = meta,
+            formStrategy = formStrategy,
+            controllerMaterial = controllerMaterial
         )
     }
 }

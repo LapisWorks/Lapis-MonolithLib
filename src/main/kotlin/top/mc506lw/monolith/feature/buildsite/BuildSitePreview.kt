@@ -10,6 +10,7 @@ import org.bukkit.entity.BlockDisplay
 import org.bukkit.entity.Display
 import org.bukkit.entity.Player
 import org.bukkit.scheduler.BukkitTask
+import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
 import org.bukkit.util.Transformation
 import org.joml.AxisAngle4f
@@ -27,8 +28,6 @@ import java.util.concurrent.ConcurrentHashMap
 
 object BuildSitePreviewManager {
 
-    private val legacy = LegacyComponentSerializer.legacySection()
-    private const val PREVIEW_DURATION_TICKS = 200L
     private val logger = MonolithLogger.getLogger("Preview")
     
     private val activePreviews = ConcurrentHashMap<UUID, BuildSitePreview>()
@@ -127,17 +126,17 @@ object BuildSitePreviewManager {
     }
     
     private fun scheduleAutoCancel(player: Player) {
-        var countdown = 10
+        var countdown = 30
         val task = Bukkit.getScheduler().runTaskTimer(MonolithLib.instance, Runnable {
             countdown--
             if (countdown <= 0) {
                 if (hasActivePreview(player)) {
-                    player.sendMessage(legacy.serialize(I18n.Message.BuildSite.previewExpired))
+                    player.sendMessage(I18n.Message.BuildSite.previewExpired)
                     stopPreview(player)
                 }
                 previewTasks.remove(player.uniqueId)?.cancel()
             } else if (countdown <= 3 && hasActivePreview(player)) {
-                player.sendActionBar(legacy.serialize(I18n.Message.BuildSite.previewCountdown(countdown)))
+                player.sendActionBar(I18n.Message.BuildSite.previewCountdown(countdown))
             }
         }, 20L, 20L)
         
@@ -200,9 +199,6 @@ class BuildSitePreview(
     var facing: Facing,
     var anchorLocation: Location
 ) {
-    companion object {
-        private val legacy = LegacyComponentSerializer.legacySection()
-    }
     
     var boxRenderer: SmoothBoundingBoxRenderer? = null
     internal var errorMarkerDisplays = mutableListOf<BlockDisplay>()
@@ -286,37 +282,37 @@ class BuildSitePreview(
         } catch (_: Exception) {}
     }
     
-    fun getSummaryMessage(): List<String> {
-        val messages = mutableListOf<String>()
+    fun getSummaryMessage(): List<Component> {
+        val messages = mutableListOf<Component>()
         
-        messages.add(legacy.serialize(I18n.Message.BuildSite.previewHeader))
-        messages.add(legacy.serialize(I18n.Message.BuildSite.previewBlueprint(blueprintId)))
-        messages.add(legacy.serialize(I18n.Message.BuildSite.previewFacing(facing.name)))
-        messages.add(legacy.serialize(I18n.Message.BuildSite.previewSize(boundingBox.width, boundingBox.height, boundingBox.depth)))
-        messages.add(legacy.serialize(I18n.Message.BuildSite.previewPosition(
+        messages.add(I18n.Message.BuildSite.previewHeader)
+        messages.add(I18n.Message.BuildSite.previewBlueprint(blueprintId))
+        messages.add(I18n.Message.BuildSite.previewFacing(facing.name))
+        messages.add(I18n.Message.BuildSite.previewSize(boundingBox.width, boundingBox.height, boundingBox.depth))
+        messages.add(I18n.Message.BuildSite.previewPosition(
             boundingBox.minX, boundingBox.minY, boundingBox.minZ,
             boundingBox.maxX, boundingBox.maxY, boundingBox.maxZ
-        )))
+        ))
         
         if (validationResult.isValid) {
-            messages.add(legacy.serialize(I18n.Message.BuildSite.previewValid))
+            messages.add(I18n.Message.BuildSite.previewValid)
         } else {
-            messages.add(legacy.serialize(I18n.Message.BuildSite.previewErrors(validationResult.errors.size)))
+            messages.add(I18n.Message.BuildSite.previewErrors(validationResult.errors.size))
             for (error in validationResult.errors) {
-                messages.add("  §c- ${error.message}")
+                messages.add(LegacyComponentSerializer.legacySection().deserialize("  §c- ${error.message}"))
             }
         }
         
         if (validationResult.warnings.isNotEmpty()) {
-            messages.add(legacy.serialize(I18n.Message.BuildSite.previewWarnings))
+            messages.add(I18n.Message.BuildSite.previewWarnings)
             for (warning in validationResult.warnings) {
-                messages.add("  §e- ${warning.message}")
+                messages.add(LegacyComponentSerializer.legacySection().deserialize("  §e- ${warning.message}"))
             }
         }
         
-        messages.add(legacy.serialize(I18n.Message.BuildSite.previewInstructions))
-        messages.add(legacy.serialize(I18n.Message.BuildSite.previewAutoCancel(10)))
-        messages.add(legacy.serialize(I18n.Message.BuildSite.previewFooter))
+        messages.add(I18n.Message.BuildSite.previewInstructions)
+        messages.add(I18n.Message.BuildSite.previewAutoCancel(30))
+        messages.add(I18n.Message.BuildSite.previewFooter)
         
         return messages
     }

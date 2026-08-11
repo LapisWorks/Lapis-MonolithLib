@@ -27,6 +27,8 @@ interface IOFacade {
     fun compileRawToBuilt(rawFile: File, configFile: File): Blueprint?
     fun getSupportedFormats(): List<String>
     fun getSupportedExtensions(): Set<String>
+    /** 保存录制完成的 base blueprint；成功返回 true。 */
+    fun saveBaseBlueprint(blueprint: Blueprint, id: String): Boolean
 }
 
 interface PreviewFacade {
@@ -39,12 +41,6 @@ interface PreviewFacade {
     fun setLayer(player: Player, layer: Int): Boolean
 }
 
-interface BuildSiteFacade {
-    fun createSite(player: Player, blueprint: Blueprint, location: Location, facing: Facing): top.mc506lw.monolith.feature.buildsite.BuildSite?
-    fun getSite(location: Location): top.mc506lw.monolith.feature.buildsite.BuildSite?
-    fun getAllActiveSites(): List<top.mc506lw.monolith.feature.buildsite.BuildSite>
-}
-
 interface MonolithAPI {
 
     val registry: BlueprintRegistry
@@ -52,8 +48,6 @@ interface MonolithAPI {
     val io: IOFacade
 
     val preview: PreviewFacade
-
-    val buildSite: BuildSiteFacade
 
     fun reloadStructures()
 

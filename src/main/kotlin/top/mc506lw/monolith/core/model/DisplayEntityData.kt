@@ -18,5 +18,7 @@ data class DisplayEntityData(
     val scale: Vector3f,
     val translation: Vector3f,
     val itemStack: ItemStack? = null,
-    val blockData: BlockData? = null
+    val blockData: BlockData? = null,
+    /** Stable runtime group name used by controllers (defaults to the default group). */
+    val group: String = "default"
 )
