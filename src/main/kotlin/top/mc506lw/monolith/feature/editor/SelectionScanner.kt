@@ -10,6 +10,7 @@ import top.mc506lw.monolith.core.model.DisplayEntityData
 import top.mc506lw.monolith.core.model.DisplayType
 import top.mc506lw.monolith.core.model.Shape
 import top.mc506lw.monolith.internal.selection.PlayerSelection
+import top.mc506lw.monolith.validation.predicate.AirPredicate
 
 /**
  * 从世界选区扫描方块（与展示实体），构建脚手架/成型阶段形状。
@@ -28,8 +29,10 @@ object SelectionScanner {
     /**
      * 扫描选区。
      * @param captureDisplay 是否同时录制展示实体
+     * @param captureAir 是否保留空气条目（脚手架阶段建议 true，保证与 assembled 盒一致；
+     *                   空气位置用 AirPredicate，后续按"天然满足"处理）
      */
-    fun captureShape(selection: PlayerSelection, captureDisplay: Boolean): ScanResult? {
+    fun captureShape(selection: PlayerSelection, captureDisplay: Boolean, captureAir: Boolean = false): ScanResult? {
         if (!selection.isComplete) return null
         val worldName = selection.worldName ?: return null
         val world = Bukkit.getWorld(worldName) ?: return null
@@ -43,8 +46,13 @@ object SelectionScanner {
             for (y in min.y..max.y) {
                 for (z in min.z..max.z) {
                     val b = world.getBlockAt(x, y, z)
-                    if (b.type.isAir || b.type == org.bukkit.Material.STRUCTURE_VOID) continue
                     val relPos = Vector3i(x - min.x, y - min.y, z - min.z)
+                    if (captureAir && b.type.isAir) {
+                        // 保留空气条目：AirPredicate，建造时"该位置应为空"天然满足
+                        blocks.add(BlockEntry(position = relPos, blockData = b.blockData.clone(), predicate = AirPredicate))
+                        continue
+                    }
+                    if (b.type.isAir || b.type == org.bukkit.Material.STRUCTURE_VOID) continue
                     blocks.add(BlockEntry(position = relPos, blockData = b.blockData.clone()))
                 }
             }

@@ -73,6 +73,14 @@ class IOFacadeImpl(private val dataFolder: File) : IOFacade {
         return loadRawMNB(file)
     }
 
+    override fun loadBuiltMNB(input: java.io.InputStream): Blueprint? {
+        return try {
+            top.mc506lw.monolith.core.io.formats.BinaryFormat.deserialize(input)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     override fun compileRawToBuilt(rawFile: File, configFile: File): Blueprint? {
         val rawBlueprint = loadRawMNB(rawFile) ?: return null
         val config = top.mc506lw.monolith.core.io.BlueprintConfigLoader.load(configFile) ?: return rawBlueprint

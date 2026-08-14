@@ -239,6 +239,8 @@ object BuildSiteValidator {
         val unbreakablePositions = mutableMapOf<Material, MutableList<Vector3i>>()
         
         for (pos in positions) {
+            // 未加载区块跳过：避免百万级结构在校验时主线程逐个同步加载区块
+            if (!world.isChunkLoaded(pos.x shr 4, pos.z shr 4)) continue
             val block = world.getBlockAt(pos.x, pos.y, pos.z)
             
             if (block.type in UNBREAKABLE_MATERIALS) {
@@ -301,6 +303,7 @@ object BuildSiteValidator {
         val liquidPositions = mutableListOf<Vector3i>()
         
         for (pos in positions) {
+            if (!world.isChunkLoaded(pos.x shr 4, pos.z shr 4)) continue
             val block = world.getBlockAt(pos.x, pos.y, pos.z)
             if (block.type == Material.WATER || block.type == Material.LAVA) {
                 liquidPositions.add(pos)

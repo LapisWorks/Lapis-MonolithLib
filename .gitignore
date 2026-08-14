@@ -1,6 +1,7 @@
 
 .idea/
 .gradle
+.gradle-home/
 .trae
 .vscode
 .kotlin

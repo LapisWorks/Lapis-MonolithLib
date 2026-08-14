@@ -2,6 +2,8 @@ name: MonolithLib
 version: '${version}'
 main: top.mc506lw.monolith.MonolithLib
 api-version: '1.21'
+# 与 Rebar 同为 STARTUP，保证依赖它的附属（默认 POSTWORLD）在 onEnable 时 API 已就绪
+load: STARTUP
 authors: [ mc506lw ]
 description: 高性能巨构多方块结构前置库
 depend: [Rebar]

@@ -71,6 +71,19 @@ class PreviewSession(
     val transform: CoordinateTransform get() = _transform
     private val ghostBlocks = mutableListOf<GhostBlock>()
     private val displayEntities = ConcurrentHashMap<Vector3i, BlockDisplay>()
+
+    /** 16³ 空间索引：按区块格（x/z 与 chunk 对齐）定位幽灵，替代每 tick 全量遍历。 */
+    private data class SectionKey(val x: Int, val y: Int, val z: Int)
+    private val ghostsBySection = mutableMapOf<SectionKey, MutableList<GhostBlock>>()
+    private val ghostsByLayer = mutableMapOf<Int, MutableList<GhostBlock>>()
+
+    /** 状态计数器：幽灵状态只在 updateGhostBlock 中变化，保证计数始终准确。 */
+    private var correctCount = 0
+    private val correctByLayer = mutableMapOf<Int, Int>()
+
+    private fun sectionKey(pos: Vector3i) = SectionKey(
+        Math.floorDiv(pos.x, 16), Math.floorDiv(pos.y, 16), Math.floorDiv(pos.z, 16)
+    )
     
     var currentLayer: Int = 0
         private set
@@ -121,12 +134,15 @@ class PreviewSession(
             val predicate = Predicates.strict(blockEntry.blockData)
             val rotatedPredicate = RotatedPredicate(predicate, rotationSteps)
             
-            ghostBlocks.add(GhostBlock(
+            val ghost = GhostBlock(
                 worldPos = worldPos,
                 relativePos = blockEntry.position,
                 predicate = rotatedPredicate,
                 previewBlockData = rotatedPreview
-            ))
+            )
+            ghostBlocks.add(ghost)
+            ghostsBySection.computeIfAbsent(sectionKey(worldPos)) { mutableListOf() }.add(ghost)
+            ghostsByLayer.computeIfAbsent(worldPos.y) { mutableListOf() }.add(ghost)
         }
     }
     
@@ -177,16 +193,27 @@ class PreviewSession(
 
         val visiblePositions = mutableSetOf<Vector3i>()
 
-        for (ghost in ghostBlocks) {
-            if (!showAllLayers && ghost.worldPos.y != currentLayer) continue
+        // 只遍历玩家周围 (renderRadius 内的 16³ 区块格)，不再每 tick 全量扫描百万级幽灵列表
+        val minSX = Math.floorDiv(playerBlockX - renderRadius, 16)
+        val maxSX = Math.floorDiv(playerBlockX + renderRadius, 16)
+        val minSY = Math.floorDiv(playerBlockY - renderRadius, 16)
+        val maxSY = Math.floorDiv(playerBlockY + renderRadius, 16)
+        val minSZ = Math.floorDiv(playerBlockZ - renderRadius, 16)
+        val maxSZ = Math.floorDiv(playerBlockZ + renderRadius, 16)
 
-            val dx = ghost.worldPos.x - playerBlockX
-            val dy = ghost.worldPos.y - playerBlockY
-            val dz = ghost.worldPos.z - playerBlockZ
-            val distSq = dx * dx + dy * dy + dz * dz
+        for (sx in minSX..maxSX) for (sy in minSY..maxSY) for (sz in minSZ..maxSZ) {
+            for (ghost in ghostsBySection[SectionKey(sx, sy, sz)].orEmpty()) {
+                if (!showAllLayers && ghost.worldPos.y != currentLayer) continue
 
-            if (distSq <= radiusSq) {
+                val dx = ghost.worldPos.x - playerBlockX
+                val dy = ghost.worldPos.y - playerBlockY
+                val dz = ghost.worldPos.z - playerBlockZ
+                val distSq = dx * dx + dy * dy + dz * dz
+
+                if (distSq > radiusSq) continue
                 visiblePositions.add(ghost.worldPos)
+                // 未加载区块跳过：避免主线程同步加载区块；区块加载后下个 tick 再渲染
+                if (!world.isChunkLoaded(ghost.worldPos.x shr 4, ghost.worldPos.z shr 4)) continue
                 val block = world.getBlockAt(ghost.worldPos.x, ghost.worldPos.y, ghost.worldPos.z)
                 updateGhostBlock(ghost, block)
             }
@@ -215,7 +242,8 @@ class PreviewSession(
         }
         
         val completed = if (showAllLayers) {
-            ghostBlocks.isNotEmpty() && ghostBlocks.all { it.currentState == GhostColor.CORRECT }
+            // 计数器判断，避免接近完成时全量遍历幽灵列表
+            ghostBlocks.isNotEmpty() && correctCount == ghostBlocks.size
         } else {
             checkLayerCompletion()
         }
@@ -239,7 +267,20 @@ class PreviewSession(
             else -> GhostColor.WRONG
         }
         
-        ghost.currentState = newState
+        if (ghost.currentState != newState) {
+            val oldState = ghost.currentState
+            ghost.currentState = newState
+            if (oldState == GhostColor.CORRECT) {
+                correctCount--
+                correctByLayer.merge(ghost.worldPos.y, -1, Int::plus)?.let {
+                    if (it <= 0) correctByLayer.remove(ghost.worldPos.y)
+                }
+            }
+            if (newState == GhostColor.CORRECT) {
+                correctCount++
+                correctByLayer.merge(ghost.worldPos.y, 1, Int::plus)
+            }
+        }
         
         val display = getOrCreateDisplayEntity(ghost)
         
@@ -289,8 +330,8 @@ class PreviewSession(
     }
     
     private fun checkLayerCompletion(): Boolean {
-        val layerBlocks = ghostBlocks.filter { it.worldPos.y == currentLayer }
-        val allCorrect = layerBlocks.isNotEmpty() && layerBlocks.all { it.currentState == GhostColor.CORRECT }
+        val layerBlocks = ghostsByLayer[currentLayer].orEmpty()
+        val allCorrect = layerBlocks.isNotEmpty() && (correctByLayer[currentLayer] ?: 0) == layerBlocks.size
         
         if (allCorrect) {
             if (currentLayer < maxLayer) {
@@ -307,8 +348,8 @@ class PreviewSession(
     }
     
     fun getLayerProgress(): Pair<Int, Int> {
-        val layerBlocks = ghostBlocks.filter { it.worldPos.y == currentLayer }
-        val correct = layerBlocks.count { it.currentState == GhostColor.CORRECT }
+        val layerBlocks = ghostsByLayer[currentLayer].orEmpty()
+        val correct = correctByLayer[currentLayer] ?: 0
         return Pair(correct, layerBlocks.size)
     }
     

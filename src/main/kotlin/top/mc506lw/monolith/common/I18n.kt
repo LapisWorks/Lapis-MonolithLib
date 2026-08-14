@@ -3,6 +3,7 @@ package top.mc506lw.monolith.common
 import io.github.pylonmc.rebar.i18n.RebarArgument
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.TranslatableComponent
+import top.mc506lw.monolith.core.math.Vector3i
 
 object I18n {
 
@@ -374,6 +375,16 @@ object I18n {
                 "chat.wrench.err_no_blueprint_controller", arg("id", id))
             val disassembleSuccess = translatable("chat.wrench.disassemble_success")
             val errDisassembleFailed = translatable("chat.wrench.err_disassemble_failed")
+
+            fun detailMissingMaterial(count: Int) = translatable(
+                "chat.wrench.detail_missing_material", arg("count", count))
+            fun detailMissingRebar(count: Int) = translatable(
+                "chat.wrench.detail_missing_rebar", arg("count", count))
+            fun detailPosition(pos: Vector3i, hint: String) = translatable(
+                "chat.wrench.detail_position",
+                arg("x", pos.x), arg("y", pos.y), arg("z", pos.z), arg("hint", hint))
+            fun detailMore(count: Int) = translatable(
+                "chat.wrench.detail_more", arg("count", count))
         }
 
         object BuildMode {

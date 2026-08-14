@@ -111,6 +111,26 @@ class MyPlugin : JavaPlugin() {
 }
 ```
 
+### 1b. 从 .mnb 加载成品结构（推荐给复杂机器）
+
+游戏内录制的复杂结构（两阶段 + 展示实体）用 `.mnb` 分发，用代码定制而无需 Setting.yml：
+
+```kotlin
+override fun onEnable() {
+    saveResource("blast_furnace.mnb", false)   // 打包进插件 resources
+    val file = File(dataFolder, "blast_furnace.mnb")
+
+    val blueprint = MonolithAPI.io.loadBuiltMNB(file)!!.transform {
+        controllerRebarKey(NamespacedKey("myplugin", "blast_furnace_controller"))
+        scaffoldMaterials(mapOf(Material.IRON_BLOCK to Material.CONCRETE))  // 脚手架批量换材料
+        overrideRebar(Vector3i(1, 0, 0), NamespacedKey("myplugin", "input_hatch")) // 位置级 Rebar 覆盖
+    }
+    MonolithAPI.registry.register(blueprint)
+}
+```
+
+`transform` 提供与 Setting.yml 等价的全部能力（overrides / scaffold_materials / rotation / display 覆写 / 控制器 key），详见 `BlueprintTransformer` 与开发者指南第 11 章。
+
 ### 2. 编写 Rebar 代码（坐标契约）
 
 Rebar 代码里写死最严格的规则，MonolithLib 会在最后帮你"骗"过这些规则。

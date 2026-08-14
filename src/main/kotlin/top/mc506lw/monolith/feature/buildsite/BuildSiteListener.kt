@@ -67,7 +67,7 @@ class BuildSiteListener : Listener {
     private fun readAnchorItemBlueprintId(item: ItemStack): String? {
         if (item.type != BuildSiteAnchorBlock.MATERIAL) return null
         if (item.itemMeta?.persistentDataContainer?.has(
-                NamespacedKey(MonolithLib.instance, "blueprint_id"),
+                BuildSiteAnchorItem.BLUEPRINT_ID_KEY,
                 PersistentDataType.STRING
             ) != true) return null
 
@@ -77,7 +77,7 @@ class BuildSiteListener : Listener {
         } catch (_: Exception) { return null }
 
         return item.itemMeta?.persistentDataContainer?.get(
-            NamespacedKey(MonolithLib.instance, "blueprint_id"),
+            BuildSiteAnchorItem.BLUEPRINT_ID_KEY,
             PersistentDataType.STRING
         )
     }
@@ -186,13 +186,12 @@ class BuildSiteListener : Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     fun onBlockPlace(event: BlockPlaceEvent) {
         val placedBlock = event.block
-        val anchor = findAnchorNearby(placedBlock) ?: return
-        val player = event.player
-
-        val rate = anchor.getCompletionRate()
-        if (rate >= 1.0) {
-            player.sendMessage(I18n.Message.BuildSite.completedHint)
-        }
+        // 区块索引 O(1) 定位覆盖该位置的工地
+        val anchor = BuildSiteRegistry.findCovering(placedBlock) ?: return
+        // 即时刷新该位置的幽灵：放对 → 幽灵立刻消失；放错 → 立刻变色（所有附近玩家同步）
+        anchor.renderPositionForPlayer(placedBlock)
+        // 异步完成度检查：0→100% 跃迁时提示一次；不阻塞主线程、不刷屏
+        anchor.requestCompletionCheck(event.player)
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -206,14 +205,22 @@ class BuildSiteListener : Listener {
             return
         }
 
-        val anchor = findAnchorNearby(brokenBlock)
+        // 区块索引 O(1) 定位覆盖该位置的工地
+        val anchor = BuildSiteRegistry.findCovering(brokenBlock)
         if (anchor != null) {
-            // 更新 ghost 颜色
-            anchor.renderForPlayer(player)
+            // 破坏方块后重置完成度状态，允许再次触发完成提示
+            anchor.resetCompletionReport()
+            // 破坏事件触发时方块尚未真正移除（事件结束后才破坏），
+            // 下一 tick 再刷新该位置的幽灵，确保读到破坏后的真实方块状态
+            Bukkit.getScheduler().runTask(MonolithLib.instance, Runnable {
+                anchor.renderPositionForPlayer(brokenBlock)
+            })
         }
     }
 
     // ---------- 玩家移动 ----------
+
+    private val lastMoveChunk = ConcurrentHashMap<UUID, String>()
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onPlayerMove(event: PlayerMoveEvent) {
@@ -223,10 +230,30 @@ class BuildSiteListener : Listener {
 
         if (from.blockX == to.blockX && from.blockY == to.blockY && from.blockZ == to.blockZ) return
 
-        // 查找附近的所有展位并渲染
+        // 节流：仅当跨区块边界时才触发渲染，避免每格移动全量重算
+        val chunkKey = "${to.blockX shr 4}:${to.blockZ shr 4}"
+        val last = lastMoveChunk[player.uniqueId]
+        if (last == chunkKey) return
+        lastMoveChunk[player.uniqueId] = chunkKey
+
+        val px = to.blockX
+        val py = to.blockY
+        val pz = to.blockZ
+        val farSq = BuildSiteAnchorBlock.FAR_RENDER_DISTANCE_SQ
+
+        // 以"玩家位置"为中心做 O(1) 粗筛（基于缓存 AABB），不再要求玩家必须靠近锚点：
+        // 大型建筑的远侧也能触发幽灵渲染；离开范围则清理该玩家在本工地的渲染。
         BuildSiteRegistry.all()
-            .filter { it.block.world == player.world && it.block.location.distanceSquared(to) <= 20.0 * 20.0 }
-            .forEach { it.renderForPlayer(player) }
+            .filter { it.block.world == player.world }
+            .forEach { anchor ->
+                if (anchor.intersectsPlayerRange(px, py, pz, BuildSiteAnchorBlock.RENDER_RADIUS) ||
+                    anchor.block.location.distanceSquared(to) <= farSq
+                ) {
+                    anchor.renderForPlayer(player)
+                } else {
+                    anchor.hideFromPlayer(player)
+                }
+            }
     }
 
     @EventHandler
@@ -252,35 +279,25 @@ class BuildSiteListener : Listener {
 
     @EventHandler
     fun onChunkUnload(event: ChunkUnloadEvent) {
+        // O(1) 覆盖判断（缓存 AABB）；只回收该区块内的幽灵，避免整站渲染被清空导致闪没
         BuildSiteRegistry.all()
             .filter { it.block.world == event.world }
-            .filter { anchor -> anchor.getGhostEntries().any { it.worldPos.x shr 4 == event.chunk.x && it.worldPos.z shr 4 == event.chunk.z } }
-            .forEach { it.removeAllRenderings() }
+            .filter { it.coversChunk(event.chunk.x, event.chunk.z) }
+            .forEach { it.removeRenderingsInChunk(event.chunk.x, event.chunk.z) }
     }
 
     @EventHandler
     fun onChunkLoad(event: ChunkLoadEvent) {
         BuildSiteRegistry.all()
             .filter { it.block.world == event.world }
-            .filter { anchor -> anchor.getGhostEntries().any { it.worldPos.x shr 4 == event.chunk.x && it.worldPos.z shr 4 == event.chunk.z } }
-            .forEach { anchor -> Bukkit.getOnlinePlayers().filter { it.world == event.world }.forEach(anchor::renderForPlayer) }
+            .filter { it.coversChunk(event.chunk.x, event.chunk.z) }
+            .forEach { anchor ->
+                Bukkit.getOnlinePlayers()
+                    .filter { it.world == event.world }
+                    .forEach(anchor::renderForPlayer)
+            }
     }
 
     // ---------- 辅助 ----------
 
-    private fun findAnchorNearby(block: Block): BuildSiteAnchorBlock? {
-        val world = block.world
-        for (dx in -7..7) {
-            for (dy in -7..7) {
-                for (dz in -7..7) {
-                    val b = world.getBlockAt(block.x + dx, block.y + dy, block.z + dz)
-                    val rebar = BlockStorage.get(b)
-                    if (rebar is BuildSiteAnchorBlock && rebar.blueprint != null) {
-                        return rebar
-                    }
-                }
-            }
-        }
-        return null
-    }
 }

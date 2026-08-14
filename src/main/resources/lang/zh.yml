@@ -318,6 +318,10 @@ chat:
     err_no_blueprint_controller: "<red>[MonolithLib] 该多方块没有关联的蓝图</red>"
     disassemble_success: "<green>[MonolithLib] 已解体：工地已恢复初始阶段，可继续建造</green>"
     err_disassemble_failed: "<red>[MonolithLib] 解体失败：无法放置工地展位</red>"
+    detail_missing_material: "<gray>另有 <white>%count% 处</white> 材质不匹配：</gray>"
+    detail_missing_rebar: "<gray>另有 <white>%count% 处</white> 需要 Rebar 方块：</gray>"
+    detail_position: "<gray>  (%x%, %y%, %z%) → <white>%hint%</white></gray>"
+    detail_more: "<gray>... 还有 %count% 处未列出</gray>"
 
   # ─── 建造模式（轻松放置 + 自动打印 合并） ───
   build_mode:

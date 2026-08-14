@@ -77,12 +77,19 @@ class Shape(
     val blocks: List<BlockEntry>,
     val boundingBox: BoundingBox
 ) {
-    private val blocksByPosition: Map<Vector3i, BlockEntry> by lazy { blocks.associateBy { it.position } }
+    /**
+     * 位置索引：急切构建，把百万级 associateBy 的成本放到蓝图加载/编译期，
+     * 避免运行期首次查询（破坏成型组件、解体转换、放方块判定）在主线程触发一次 1M 构建卡顿。
+     */
+    private val blocksByPosition: Map<Vector3i, BlockEntry> = blocks.associateBy { it.position }
     val blockCount: Int get() = blocks.size
     
     constructor(blocks: List<BlockEntry>) : this(blocks, BoundingBox.fromBlocks(blocks))
     
     fun getBlockAt(x: Int, y: Int, z: Int): BlockEntry? = blocksByPosition[Vector3i(x, y, z)]
+
+    /** 复用缓存的位置索引，避免热循环里为每次查询重新分配 [Vector3i]。 */
+    fun getBlockAt(position: Vector3i): BlockEntry? = blocksByPosition[position]
     
     fun getBlocksInLayer(y: Int): List<BlockEntry> {
         return blocks.filter { it.position.y == y }

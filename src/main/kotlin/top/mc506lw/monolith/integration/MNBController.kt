@@ -7,15 +7,21 @@ import io.github.pylonmc.rebar.block.context.BlockCreateContext
 import io.github.pylonmc.rebar.block.interfaces.BlockBreakRebarBlockHandler
 import io.github.pylonmc.rebar.block.interfaces.EntityHolderRebarBlock
 import io.github.pylonmc.rebar.block.interfaces.RebarMultiblock
+import io.github.pylonmc.rebar.block.interfaces.SimpleRebarMultiblock.MultiblockComponent
 import io.github.pylonmc.rebar.entity.display.BlockDisplayBuilder
 import io.github.pylonmc.rebar.entity.display.ItemDisplayBuilder
 import io.github.pylonmc.rebar.util.position.ChunkPosition
 import io.github.pylonmc.rebar.util.position.position
+import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.block.Block
 import org.bukkit.entity.Display
+import org.bukkit.event.EventHandler
+import org.bukkit.event.EventPriority
+import org.bukkit.event.Listener
+import org.bukkit.event.world.ChunkLoadEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataContainer
 import org.bukkit.persistence.PersistentDataType
@@ -27,14 +33,21 @@ import top.mc506lw.monolith.api.MonolithAPI
 import top.mc506lw.monolith.common.MonolithLogger
 import top.mc506lw.monolith.core.math.Vector3i
 import top.mc506lw.monolith.core.model.Blueprint
+import top.mc506lw.monolith.core.model.BoundingBox
 import top.mc506lw.monolith.core.model.DisplayEntityData
+import top.mc506lw.monolith.feature.buildsite.BuildSiteRegistry
 import top.mc506lw.monolith.core.model.DisplayType
 import top.mc506lw.monolith.core.model.FormStrategy
 import top.mc506lw.monolith.core.transform.BlockStateRotator
 import top.mc506lw.monolith.core.transform.CoordinateTransform
 import top.mc506lw.monolith.core.transform.Facing
+import top.mc506lw.monolith.lifecycle.PositionCache
 import top.mc506lw.monolith.MonolithLib
+import top.mc506lw.monolith.validation.predicate.RebarPredicate
+import top.mc506lw.monolith.validation.predicate.rebarKeyOfPredicate
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 通用多方块控制器 — 每个 [Blueprint] 自动对应一个此类的实例。
@@ -70,17 +83,40 @@ open class MNBController(
         private val BLUEPRINT_ID_KEY = NamespacedKey(MonolithLib.instance, "blueprint_id")
         private val FACING_KEY = NamespacedKey(MonolithLib.instance, "structure_facing")
 
-        /** world:x:y:z → 成型结构的控制器，用于组件被破坏时立即回退。 */
-        private val formedComponentIndex = ConcurrentHashMap<String, MNBController>()
+        /** 世界名 → 已成型结构（AABB 粗筛 + 蓝图精确判定）。成型/解体 O(1)，不再维护百万级位置索引。 */
+        private val formedByWorld = ConcurrentHashMap<String, java.util.concurrent.CopyOnWriteArrayList<FormedEntry>>()
+
+        /** 已成型结构条目：持有 assembled 世界包围盒用于 O(1) 粗筛。 */
+        class FormedEntry(val controller: MNBController, val worldBox: BoundingBox)
+
+        /** 解体转换时所在区块未加载的方块：chunkKey → 待转换列表，chunk load 时补转。 */
+        val pendingScaffoldByChunk = ConcurrentHashMap<Long, PendingScaffold>()
+
+        /** 待转换的 scaffold 方块（持有控制器引用以复用 facing/blueprint）。 */
+        class PendingScaffold(val controller: MNBController) {
+            val positions: ConcurrentLinkedQueue<Vector3i> = ConcurrentLinkedQueue()
+        }
 
         fun isFormedStructureComponent(block: Block): Boolean =
-            formedComponentIndex.containsKey(blockPosKey(block))
+            findControllerForComponent(block) != null
 
-        fun findControllerForComponent(block: Block): MNBController? =
-            formedComponentIndex[blockPosKey(block)]
-
-        private fun blockPosKey(block: Block): String =
-            "${block.world.name}:${block.x}:${block.y}:${block.z}"
+        fun findControllerForComponent(block: Block): MNBController? {
+            val list = formedByWorld[block.world.name] ?: return null
+            for (fe in list) {
+                val controller = fe.controller
+                if (fe.worldBox.contains(block.x, block.y, block.z)) {
+                    val bp = controller.blueprint ?: continue
+                    val rel = controller.cachedTransform().toRelativePosition(
+                        Vector3i(block.x, block.y, block.z),
+                        Vector3i(controller.block.x, controller.block.y, controller.block.z),
+                        bp.meta.controllerOffset
+                    )
+                    // 精确判定：反变换后必须是 assembled shape 的成员（含控制器位置，由调用方先处理）
+                    if (bp.assembledShape.getBlockAt(rel) != null) return controller
+                }
+            }
+            return null
+        }
 
     }
 
@@ -91,7 +127,33 @@ open class MNBController(
     private var _structureFormed: Boolean = false
     private val hiddenBlocksOrigData = ConcurrentHashMap<Vector3i, String>()
     private val displayGroups = ConcurrentHashMap<String, MutableList<Display>>()
-    private val registeredComponentKeys = mutableSetOf<String>()
+
+    // ---- 性能缓存：Rebar 的 MultiblockCache 会对每个方块事件调用 chunksOccupied /
+    // isPartOfMultiblock / checkFormed，百万级结构绝不能每次重建 1M 项映射 ----
+    @Volatile private var cachedComponents: Map<Vector3i, MultiblockComponent>? = null
+    @Volatile private var cachedChunks: Set<ChunkPosition>? = null
+    @Volatile private var cachedTransform: CoordinateTransform? = null
+    @Volatile private var cachedHiddenRelative: Pair<FormStrategy, Set<Vector3i>>? = null
+    private var componentsCacheKey: String? = null
+
+    private fun invalidateCaches() {
+        cachedComponents = null
+        cachedChunks = null
+        cachedTransform = null
+        cachedHiddenRelative = null
+        componentsCacheKey = null
+    }
+
+    private fun cachedTransform(): CoordinateTransform =
+        cachedTransform ?: CoordinateTransform(facing).also { cachedTransform = it }
+
+    private fun cachedHiddenRelative(bp: Blueprint, strategy: FormStrategy): Set<Vector3i> {
+        val cached = cachedHiddenRelative
+        if (cached != null && cached.first === strategy) return cached.second
+        val built = getHiddenRelativePositions(bp, strategy)
+        cachedHiddenRelative = strategy to built
+        return built
+    }
 
     fun getGroup(name: String): List<Display> = displayGroups[name]?.toList() ?: emptyList()
 
@@ -111,6 +173,7 @@ open class MNBController(
         _structureFormed = false
         hiddenBlocksOrigData.clear()
         unregisterFormedComponents()
+        invalidateCaches()
     }
 
     val blueprintId: String? get() = _blueprintId
@@ -121,7 +184,7 @@ open class MNBController(
             return if (name != null) try { Facing.valueOf(name) } catch (_: Exception) { Facing.NORTH } else Facing.NORTH
         }
 
-    protected val blueprint: Blueprint?
+    internal val blueprint: Blueprint?
         get() {
             val id = _blueprintId ?: return null
             return try { MonolithAPI.getInstance().registry.get(id) } catch (_: Exception) { null }
@@ -130,6 +193,7 @@ open class MNBController(
     /** 由外部（BuildSiteAnchorBlock）在定型后调用 */
     fun setFacing(f: Facing) {
         _facingName = f.name
+        invalidateCaches()
     }
 
     /**
@@ -138,9 +202,14 @@ open class MNBController(
      */
     protected open fun configureComponents(components: MonolithComponents) = Unit
 
-    fun getMNBComponents(): Map<Vector3i, io.github.pylonmc.rebar.block.interfaces.SimpleRebarMultiblock.MultiblockComponent> {
+    fun getMNBComponents(): Map<Vector3i, MultiblockComponent> {
         val bp = blueprint ?: return emptyMap()
-        return MonolithComponents.fromMNB(bp, facing.rotationSteps).also(::configureComponents).toMap()
+        val key = buildString { append(_blueprintId).append(':').append(facing.rotationSteps) }
+        cachedComponents?.let { if (componentsCacheKey == key) return it }
+        val built = MonolithComponents.fromMNB(bp, facing.rotationSteps).also(::configureComponents).toMap()
+        componentsCacheKey = key
+        cachedComponents = built
+        return built
     }
 
     /** Resolves every named port of a role to its actual formed Rebar block. */
@@ -162,21 +231,22 @@ open class MNBController(
             // 至少返回控制器自身所在 chunk，避免 Rebar MultiblockCache 抛
             // "Your multiblock must occupy at least one chunk"。
             val selfChunk = block.position.chunk
+            cachedChunks?.let { return it }
             val bp = blueprint
             if (bp == null) return setOf(selfChunk)
-        val components = getMNBComponents()
-        if (components.isEmpty()) return setOf(selfChunk)
+            val components = getMNBComponents()
+            if (components.isEmpty()) return setOf(selfChunk)
 
-            val chunks = mutableSetOf<ChunkPosition>()
-            val transform = CoordinateTransform(facing)
+            // 只算一次并缓存：Rebar 在 add/remove/refreshFullyLoaded 反复访问本属性
+            val chunks = java.util.HashSet<ChunkPosition>()
+            val transform = cachedTransform()
             val controllerPos = Vector3i(block.x, block.y, block.z)
-            val world = block.world
             for (offset in components.keys) {
-                val wpos = transform.toWorldPosition(controllerPos, offset, Vector3i(0, 0, 0))
-                chunks.add(world.getBlockAt(wpos.x, wpos.y, wpos.z).position.chunk)
+                val rel = transform.transform(offset)
+                chunks.add(ChunkPosition(block.world, (controllerPos.x + rel.x) shr 4, (controllerPos.z + rel.z) shr 4))
             }
             chunks.add(selfChunk)
-            return chunks
+            return chunks.toSet().also { cachedChunks = it }
         }
 
     override fun checkFormed(): Boolean {
@@ -185,14 +255,31 @@ open class MNBController(
         val world = block.world
 
         // 与 components 相同：相对控制器的 offset（已减 centerOffset）
-        val hiddenRelative = getHiddenRelativePositions(bp, strategy)
-        val transform = CoordinateTransform(facing)
+        val hiddenRelative = cachedHiddenRelative(bp, strategy)
+        val transform = cachedTransform()
         val controllerPos = Vector3i(block.x, block.y, block.z)
+        val components = getMNBComponents()
 
-        for ((offset, component) in getMNBComponents()) {
+        for ((offset, component) in components) {
             if (_structureFormed && offset in hiddenRelative) continue
-            val worldPos = transform.toWorldPosition(controllerPos, offset, Vector3i(0, 0, 0))
-            if (!component.matches(world.getBlockAt(worldPos.x, worldPos.y, worldPos.z))) return false
+            val rel = transform.transform(offset)
+            val wx = controllerPos.x + rel.x
+            val wy = controllerPos.y + rel.y
+            val wz = controllerPos.z + rel.z
+            // 未加载区块跳过：避免主线程同步加载区块（Rebar 以 partUnloaded 单独处理）
+            val chunk = if (world.isChunkLoaded(wx shr 4, wz shr 4)) {
+                world.getChunkAt(wx shr 4, wz shr 4)
+            } else {
+                null
+            } ?: continue
+            val matched = if (component.rebarBlocks.isEmpty()) {
+                // 纯 vanilla 组件：直接比 Chunk 的 blockData，避免逐方块 BlockStorage 读
+                val data = chunk.getBlock(wx and 15, wy, wz and 15).blockData
+                component.vanillaBlocks.any { data.matches(it) }
+            } else {
+                component.matches(chunk.getBlock(wx and 15, wy, wz and 15))
+            }
+            if (!matched) return false
         }
         return true
     }
@@ -200,14 +287,16 @@ open class MNBController(
     override fun isPartOfMultiblock(otherBlock: Block): Boolean {
         if (otherBlock.world != block.world) return false
         if (otherBlock.x == block.x && otherBlock.y == block.y && otherBlock.z == block.z) return true
-        val transform = CoordinateTransform(facing)
-        val controllerPos = Vector3i(block.x, block.y, block.z)
-        // 与 checkFormed 同一套世界坐标变换，避免未旋转相对坐标导致破坏不触发 unform
-        for (offset in getMNBComponents().keys) {
-            val wpos = transform.toWorldPosition(controllerPos, offset, Vector3i(0, 0, 0))
-            if (wpos.x == otherBlock.x && wpos.y == otherBlock.y && wpos.z == otherBlock.z) return true
-        }
-        return false
+        val bp = blueprint ?: return false
+        val components = getMNBComponents()
+        if (components.isEmpty()) return false
+        // O(1)：反变换出相对坐标后查缓存的组件映射（不再遍历百万级 keys）
+        val relative = cachedTransform().toRelativePosition(
+            Vector3i(otherBlock.x, otherBlock.y, otherBlock.z),
+            Vector3i(block.x, block.y, block.z),
+            Vector3i(0, 0, 0)
+        )
+        return components.containsKey(relative)
     }
 
     open override fun onMultiblockFormed() {
@@ -248,8 +337,8 @@ open class MNBController(
         } else if (bp != null) {
             clearHeldDisplays()
         }
-        val controllerKey = try { bp?.controllerRebarKey ?: KEY } catch (_: Exception) { KEY }
-        drops.add(io.github.pylonmc.rebar.item.builder.ItemStackBuilder.rebar(block.type, controllerKey).build())
+        // 成型机器被破坏时回退到脚手架工地由 StructureDisassembly 处理；
+        // 这里不掉落孤立的"控制器物品"，避免产生无意义的散落物品。
     }
 
     // ========== 生命周期 ==========
@@ -366,36 +455,146 @@ open class MNBController(
     /**
      * 扳手解体专用：恢复 FullDisplay/Hybrid 隐藏方块 → 把 assembled 方块替换为 scaffold 方块（非控制器位置）。
      * 之后由调用方删除控制器并放置 [BuildSiteAnchorBlock]。
+     *
+     * 替换改为分帧批量执行（每 tick ≤8ms，不冻结主线程）；未加载区块的方块
+     * 推迟到该区块加载时由 [ScaffoldChunkLoader] 补转。
      */
     fun disassembleToScaffold() {
         val bp = blueprint ?: return
+        _structureFormed = false
+        unregisterFormedComponents()
+        clearHeldDisplays()
+        // 转换循环会覆盖 STRUCTURE_VOID 位置（scaffold 方块 / 空气），无需再走一遍 revert
+        hiddenBlocksOrigData.clear()
+        scheduleScaffoldConversion(bp)
+    }
+
+    private fun scheduleScaffoldConversion(bp: Blueprint) {
         val world = block.world
-        val transform = CoordinateTransform(facing)
         val controllerPos = Vector3i(block.x, block.y, block.z)
         val centerOffset = bp.meta.controllerOffset
         val rotationSteps = facing.rotationSteps
-
-        // 1. 触发 unform（会调用 revertFormStrategy：恢复 STRUCTURE_VOID → 原方块 + 移除 display）
-        if (_structureFormed) {
-            try { onMultiblockUnformed(partUnloaded = false) } catch (_: Exception) {}
-        } else {
-            clearHeldDisplays()
-        }
-
-        // 2. 把 assembled 方块替换为 scaffold 方块（非控制器位置）
-        val scaffoldMap = bp.scaffoldShape.blocks.associateBy { it.position }
-        for (be in bp.assembledShape.blocks) {
-            if (be.position == centerOffset) continue
-            val wpos = transform.toWorldPosition(controllerPos, be.position, centerOffset)
-            val b = world.getBlockAt(wpos.x, wpos.y, wpos.z)
-            if (BlockStorage.isRebarBlock(b)) continue
-            val scaffoldEntry = scaffoldMap[be.position]
-            if (scaffoldEntry != null) {
-                val rotatedData = BlockStateRotator.rotate(scaffoldEntry.blockData.clone(), rotationSteps)
-                try { b.setBlockData(rotatedData, false) } catch (_: Exception) {}
+        val assembledBlocks = bp.assembledShape.blocks
+        val size = assembledBlocks.size
+        val idx = AtomicInteger(0)
+        val scheduler = org.bukkit.Bukkit.getScheduler()
+        val task = object : Runnable {
+            override fun run() {
+                val deadline = System.nanoTime() + 8_000_000L // 每 tick 至多 ~8ms，避免卡服
+                var done = false
+                while (true) {
+                    if (System.nanoTime() >= deadline) break
+                    val i = idx.getAndIncrement()
+                    if (i >= size) { done = true; break }
+                    val be = assembledBlocks[i]
+                    if (be.position == centerOffset) continue // 控制器位置由调用方单独处理
+                    val rx = be.position.x - centerOffset.x
+                    val ry = be.position.y - centerOffset.y
+                    val rz = be.position.z - centerOffset.z
+                    val wx: Int
+                    val wz: Int
+                    // 与 Matrix3x3 旋转约定一致的内联变换（避免每方块分配 Vector3i）
+                    when (rotationSteps % 4) {
+                        1 -> { wx = controllerPos.x + rz; wz = controllerPos.z - rx }
+                        2 -> { wx = controllerPos.x - rx; wz = controllerPos.z - rz }
+                        3 -> { wx = controllerPos.x - rz; wz = controllerPos.z + rx }
+                        else -> { wx = controllerPos.x + rx; wz = controllerPos.z + rz }
+                    }
+                    val wy = controllerPos.y + ry
+                    if (!world.isChunkLoaded(wx shr 4, wz shr 4)) {
+                        val key = PositionCache.getChunkKey(wx shr 4, wz shr 4)
+                        pendingScaffoldByChunk
+                            .computeIfAbsent(key) { PendingScaffold(this@MNBController) }
+                            .positions.add(Vector3i(wx, wy, wz))
+                        continue
+                    }
+                    convertScaffoldBlockAtRelative(
+                        bp, be.position, wx, wy, wz, rotationSteps, be.predicate is RebarPredicate
+                    )
+                }
+                if (!done) scheduler.runTask(MonolithLib.instance, this)
+                else {
+                    // 转换全部完成：该位置工地 scaffold 已就位，直接把完成度置为 100%，
+                    // 避免"解体后再定型"因计数器未校准而显示 0%（无需敲一块方块触发校准）
+                    BuildSiteRegistry.findAt(block.world.name, block.x, block.y, block.z)
+                        ?.onScaffoldConversionComplete()
+                }
             }
         }
-        logger.info { "Disassembled ${bp.id} back to scaffold at (${block.x}, ${block.y}, ${block.z})" }
+        scheduler.runTask(MonolithLib.instance, task)
+    }
+
+    /** 把单个 assembled 方块转换为脚手架方块（无掉落）。未加载区块 → 记录到待转队列，chunk load 时补转。 */
+    internal fun convertScaffoldBlockAt(bp: Blueprint, wx: Int, wy: Int, wz: Int) {
+        val world = block.world
+        if (!world.isChunkLoaded(wx shr 4, wz shr 4)) {
+            val key = PositionCache.getChunkKey(wx shr 4, wz shr 4)
+            pendingScaffoldByChunk
+                .computeIfAbsent(key) { PendingScaffold(this) }
+                .positions.add(Vector3i(wx, wy, wz))
+            return
+        }
+        val transform = cachedTransform()
+        val controllerPos = Vector3i(block.x, block.y, block.z)
+        val centerOffset = bp.meta.controllerOffset
+        val relative = transform.toRelativePosition(Vector3i(wx, wy, wz), controllerPos, centerOffset)
+        if (relative == centerOffset) return
+        val be = bp.assembledShape.getBlockAt(relative)
+        convertScaffoldBlockAtRelative(
+            bp, relative, wx, wy, wz, facing.rotationSteps, be?.predicate is RebarPredicate
+        )
+    }
+
+    /** 按相对坐标直接转换（批处理循环已算好世界坐标，跳过反变换与二次区块检查）。 */
+    private fun convertScaffoldBlockAtRelative(
+        bp: Blueprint,
+        relative: Vector3i,
+        wx: Int,
+        wy: Int,
+        wz: Int,
+        rotationSteps: Int,
+        assembledRebar: Boolean
+    ) {
+        val world = block.world
+        val b = world.getBlockAt(wx, wy, wz)
+        val scaffoldEntry = bp.scaffoldShape.getBlockAt(relative)
+        if (scaffoldEntry == null) {
+            // 成型独有的位置：脚手架中不存在 → 空气
+            if (BlockStorage.isRebarBlock(b)) {
+                try {
+                    BlockStorage.breakBlock(
+                        b,
+                        BlockBreakContext.PluginBreak(b, normallyDrops = false, shouldSetToAir = true)
+                    )
+                } catch (_: Exception) {}
+            }
+            b.setType(Material.AIR, false)
+            return
+        }
+        val scaffoldRebarKey = scaffoldEntry.predicate?.rebarKeyOfPredicate()
+        // 仅 assembled 或 scaffold 涉及 rebar 的位置才做 PDC 检查；百万级 vanilla 位置跳过，
+        // 避免每方块一次 BlockStorage.isRebarBlock（PDC 读取）拖慢整批转换
+        if ((assembledRebar || scaffoldRebarKey != null) && BlockStorage.isRebarBlock(b)) {
+            try {
+                BlockStorage.breakBlock(
+                    b,
+                    BlockBreakContext.PluginBreak(b, normallyDrops = false, shouldSetToAir = true)
+                )
+            } catch (_: Exception) {}
+        }
+        // 脚手架该位置是 RebarPredicate → 还原为 rebar 方块（可再次拾取/建筑）
+        if (scaffoldRebarKey != null) {
+            try {
+                BlockStorage.placeBlock(b, scaffoldRebarKey)
+                return
+            } catch (_: Exception) {}
+        }
+        val rotatedData = if (rotationSteps % 4 == 0) {
+            scaffoldEntry.blockData // 无需克隆/旋转
+        } else {
+            BlockStateRotator.rotate(scaffoldEntry.blockData.clone(), rotationSteps)
+        }
+        try { b.setBlockData(rotatedData, false) } catch (_: Exception) {}
     }
 
     private fun spawnDisplayEntities(
@@ -487,23 +686,43 @@ open class MNBController(
 
     private fun registerFormedComponents(bp: Blueprint) {
         unregisterFormedComponents()
-        val transform = CoordinateTransform(facing)
-        val controllerPos = Vector3i(block.x, block.y, block.z)
-        for (offset in getMNBComponents().keys) {
-            val wpos = transform.toWorldPosition(controllerPos, offset, Vector3i(0, 0, 0))
-            // 控制器本身由 Rebar 破坏逻辑处理，组件索引用于非控制器方块
-            if (wpos.x == block.x && wpos.y == block.y && wpos.z == block.z) continue
-            val key = "${block.world.name}:${wpos.x}:${wpos.y}:${wpos.z}"
-            formedComponentIndex[key] = this
-            registeredComponentKeys.add(key)
-        }
+        // 一次性计算 assembled 世界包围盒（此后 AABB 粗筛 O(1)），成型/解体不再触碰百万级位置
+        formedByWorld.computeIfAbsent(block.world.name) { java.util.concurrent.CopyOnWriteArrayList() }
+            .add(FormedEntry(this, computeAssembledWorldBox(bp)))
     }
 
     private fun unregisterFormedComponents() {
-        for (key in registeredComponentKeys) {
-            formedComponentIndex.remove(key)
+        formedByWorld[block.world.name]?.removeAll { it.controller === this }
+    }
+
+    /** 计算 assembled 形状的世界坐标包围盒（与 Matrix3x3 旋转约定一致的内联变换）。 */
+    private fun computeAssembledWorldBox(bp: Blueprint): BoundingBox {
+        val controllerPos = Vector3i(block.x, block.y, block.z)
+        val centerOffset = bp.meta.controllerOffset
+        val rotationSteps = facing.rotationSteps
+        var minX = Int.MAX_VALUE; var minY = Int.MAX_VALUE; var minZ = Int.MAX_VALUE
+        var maxX = Int.MIN_VALUE; var maxY = Int.MIN_VALUE; var maxZ = Int.MIN_VALUE
+        for (be in bp.assembledShape.blocks) {
+            val rx = be.position.x - centerOffset.x
+            val ry = be.position.y - centerOffset.y
+            val rz = be.position.z - centerOffset.z
+            val wx: Int
+            val wz: Int
+            when (rotationSteps % 4) {
+                1 -> { wx = controllerPos.x + rz; wz = controllerPos.z - rx }
+                2 -> { wx = controllerPos.x - rx; wz = controllerPos.z - rz }
+                3 -> { wx = controllerPos.x - rz; wz = controllerPos.z + rx }
+                else -> { wx = controllerPos.x + rx; wz = controllerPos.z + rz }
+            }
+            val wy = controllerPos.y + ry
+            if (wx < minX) minX = wx
+            if (wy < minY) minY = wy
+            if (wz < minZ) minZ = wz
+            if (wx > maxX) maxX = wx
+            if (wy > maxY) maxY = wy
+            if (wz > maxZ) maxZ = wz
         }
-        registeredComponentKeys.clear()
+        return BoundingBox(minX, minY, minZ, maxX, maxY, maxZ)
     }
 
     private fun buildTransformationMatrix(ed: DisplayEntityData, rotationSteps: Int): Matrix4f {
@@ -529,5 +748,24 @@ open class MNBController(
             else -> Quaternionf()
         }
         return Transformation(Vector3f(0f, 0f, 0f), Quaternionf(fr).mul(ed.rotation), ed.scale, Quaternionf())
+    }
+}
+
+/**
+ * 区块加载时补转解体遗留的 scaffold 方块（由 MonolithLib 注册）。
+ * 独立于 MNBController 实例，避免 companion 嵌套 object 的引用问题。
+ */
+object ScaffoldChunkLoader : Listener {
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onChunkLoad(event: ChunkLoadEvent) {
+        val key = PositionCache.getChunkKey(event.chunk.x, event.chunk.z)
+        val pending = MNBController.pendingScaffoldByChunk.remove(key) ?: return
+        val controller = pending.controller
+        val bp = controller.blueprint ?: return
+        var pos = pending.positions.poll()
+        while (pos != null) {
+            controller.convertScaffoldBlockAt(bp, pos.x, pos.y, pos.z)
+            pos = pending.positions.poll()
+        }
     }
 }

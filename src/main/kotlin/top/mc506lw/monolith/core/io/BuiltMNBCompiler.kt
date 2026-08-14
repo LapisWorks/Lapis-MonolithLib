@@ -185,15 +185,25 @@ object BuiltMNBCompiler {
 
         val customData = if (config.customData.isNotEmpty()) config.customData else rawBlueprint.customData
 
-        // 解析 formStrategy
+// 解析 formStrategy：尊重原蓝图设置，仅当配置显式选择 full_display/hybrid 时才覆盖
         val formStrategy = when (config.formStrategy.lowercase()) {
             "full_display", "fulldisplay" -> top.mc506lw.monolith.core.model.FormStrategy.FullDisplay()
             "hybrid" -> {
                 val hidden = finalDisplayEntities.map { it.position }.toSet()
-                if (hidden.isEmpty()) top.mc506lw.monolith.core.model.FormStrategy.BlockOnly
+                if (hidden.isEmpty()) rawBlueprint.formStrategy
                 else top.mc506lw.monolith.core.model.FormStrategy.Hybrid(hidden)
             }
-            else -> top.mc506lw.monolith.core.model.FormStrategy.BlockOnly
+            else -> rawBlueprint.formStrategy
+        }
+
+// 若控制器 key 已被外部注册，沿用其注册材质（替代默认 STRUCTURE_BLOCK）；
+        // 仅当未注册时才使用 generated_material / 原默认
+        val effectiveControllerMaterial = if (controllerRebarKey != null) {
+            runCatching {
+                io.github.pylonmc.rebar.registry.RebarRegistry.BLOCKS.get(controllerRebarKey)?.material
+            }.getOrNull() ?: (config.generatedControllerMaterial ?: rawBlueprint.controllerMaterial)
+        } else {
+            config.generatedControllerMaterial ?: rawBlueprint.controllerMaterial
         }
 
         return Blueprint(
@@ -207,7 +217,7 @@ object BuiltMNBCompiler {
             slots = slots,
             customData = customData,
             controllerRebarKey = controllerRebarKey,
-            controllerMaterial = config.generatedControllerMaterial ?: rawBlueprint.controllerMaterial,
+            controllerMaterial = effectiveControllerMaterial,
             formStrategy = formStrategy
         )
     }
@@ -458,7 +468,13 @@ object BuiltMNBCompiler {
                 scaffoldEntry
             }
             "rebar" -> {
-                scaffoldEntry
+                val key = override.rebarKey ?: return scaffoldEntry
+                val preview = override.previewMaterial?.let { runCatching { Bukkit.createBlockData(it) }.getOrNull() }
+                    ?: scaffoldEntry.blockData
+                scaffoldEntry.copy(
+                    blockData = preview,
+                    predicate = RebarPredicate(key, preview)
+                )
             }
             else -> scaffoldEntry
         }
@@ -482,7 +498,13 @@ object BuiltMNBCompiler {
                 blockEntry
             }
             "rebar" -> {
-                blockEntry
+                val key = override.rebarKey ?: return blockEntry
+                val preview = override.previewMaterial?.let { runCatching { Bukkit.createBlockData(it) }.getOrNull() }
+                    ?: blockEntry.blockData
+                blockEntry.copy(
+                    blockData = preview,
+                    predicate = RebarPredicate(key, preview)
+                )
             }
             else -> blockEntry
         }

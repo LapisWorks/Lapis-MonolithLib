@@ -371,10 +371,113 @@ project reload 只重新编译指定项目。修改控制器类或 Rebar 注册�
 
 脚手架阶段只检查材质。成型阶段使用 assembled MNB 保存的 BlockData，并按 rotation.assembled 修正。
 
-## 11. API 速查
+## 11. 在附属插件中使用 .mnb
+
+前面章节都在讲"如何制作 .mnb"。这一章讲**如何把成品 .mnb 用进你自己的附属插件**——你不需要在附属里放任何 Setting.yml，因为成品 .mnb 已经自包含两阶段 shape、展示实体、偏移和控制器 key。
+
+### 11.1 打包进附属插件 resources
+
+把 `zjq.mnb` 放进附属的 `src/main/resources/`，`onEnable` 时直接从资源流读取（无需落盘）：
+
+```kotlin
+override fun onEnable() {
+    val blueprint = MonolithAPI.getInstance().io
+        .loadBuiltMNB(javaClass.getResourceAsStream("/zjq.mnb")) ?: return
+    MonolithAPI.getInstance().registry.register(blueprint)
+}
+```
+
+> 初始化时机：MonolithLib 为 `load: STARTUP`，且你应该 `depend: [MonolithLib]`。默认 POSTWORLD 加载的附属在 onEnable 时 API 已就绪；**不要在 MonolithLib 就绪前调用 MonolithAPI**（会抛 `MonolithAPI not initialized`）。若必须 STARTUP，请确保依赖顺序正确。
+
+### 11.2 用代码调整蓝图（BlueprintTransformer）
+
+当 mnb 是"半成品"，或你想在代码里覆盖某些位置/材料/旋转/控制器时，用 `transform` 直接改，**不需要任何 Setting.yml**。所有能力与 Setting.yml 等价：
+
+```kotlin
+val mine = MonolithAPI.getInstance().io.loadBuiltMNB(file)!!.transform {
+    // 控制器：改为你自己的 key（附属自己注册的那个）
+    controllerRebarKey(NamespacedKey("myplugin", "my_controller"))
+    controllerMaterial(Material.STRUCTURE_BLOCK)
+
+    // 批量把脚手架阶段铁块换成混凝土（等价 scaffold_materials）
+    scaffoldMaterials(mapOf(Material.IRON_BLOCK to Material.CONCRETE))
+
+    // 单位置覆盖：某位置接受 rebar 方块（等价 overrides.type=rebar）
+    overrideRebar(Vector3i(1, 0, 0), NamespacedKey("myplugin", "input_hatch"), preview = Material.HOPPER)
+
+    // 松散匹配：只查材质，忽略朝向（等价 overrides.type=loose）
+    overrideLoose(Vector3i(2, 0, 0), Material.OAK_STAIRS)
+
+    // 旋转（等价 rotation）
+    rotate(scaffoldDegrees = 0, assembledDegrees = 180)
+
+    // 槽位与自定义数据
+    slot("input", Vector3i(1, 0, 0))
+    customData("tier", 2)
+}
+MonolithAPI.getInstance().registry.register(mine)
+```
+
+常用变换方法（详见 `BlueprintTransformer`）：
+
+| 方法 | 等价 Setting.yml |
+|------|------------------|
+| `controllerRebarKey(key)` / `controllerMaterial(mat)` / `controllerPosition(pos)` | `controller.*` |
+| `overrideStrict(pos, mat)` / `overrideLoose(pos, mat, ...)` / `overrideRebar(pos, key, ...)` / `overrideAt(...)` | `overrides.*` |
+| `scaffoldMaterials(mapOf(A to B))` | `scaffold_materials` |
+| `rotate(scaffoldDegrees, assembledDegrees, center)` | `rotation.*` |
+| `slot(id, pos)` / `slots(map)` | `slots` |
+| `displayOverride(pos, ...)` / `displayOffset(v)` | `display_entities` / `display_offset` |
+| `customData(key, value)` / `meta(name, desc, author)` / `id(newId)` | `custom` / `meta` / `id` |
+
+### 11.3 控制器 key 从哪来
+
+- 成品 mnb 里烘焙的 `controllerRebarKey` 是**作者**在制作阶段通过 Setting.yml 设定的。
+- 附属用自己的控制器时，要么让作者把 mnb 烘焙成你的 key，要么用 `BlueprintTransformer.controllerRebarKey(...)` 在代码里覆盖。
+- 控制器 key 未注册时定型会被阻止（见 §4.3 与常见问题），所以**必须先注册控制器，再让玩家定型**。
+
+### 11.4 自定义工地锚点物品（契约）
+
+工地锚点物品的识别契约（`BuildSiteListener.readAnchorItemBlueprintId`）：
+
+| 条件 | 值 |
+|------|----|
+| 材质 | 固定 `Material.LODESTONE`（`BuildSiteAnchorBlock.MATERIAL`） |
+| PDC key | `monolithlib:blueprint_id`（STRING，值为蓝图 ID） |
+| Rebar 注册 | 该物品必须是已注册的 RebarItem |
+
+要生成锚点物品，优先使用公开工厂：
+
+```kotlin
+BuildSiteAnchorItem.createItem("zjq")          // 默认材质 LODESTONE
+BuildSiteAnchorItem.asAnchor(myRebarStack, "zjq")  // 基于任意 RebarItem
+```
+
+### 11.5 控制器破坏与掉落
+
+成型机器被破坏时，MonolithLib **取消破坏并回退为脚手架工地**（不掉落任何物品，见 §4.4）。控制器本身被拆解时同样无掉落——不产出"孤立的控制器物品"。不要把机器的恢复逻辑依赖在掉落上；解体请使用扳手或破坏回退机制。
+
+## 12. API 速查
 
 ~~~kotlin
+// 加载与注册 .mnb
+MonolithAPI.getInstance().io.loadBuiltMNB(file)              // 从文件
+MonolithAPI.getInstance().io.loadBuiltMNB(inputStream)       // 从 jar 资源流
 MonolithAPI.getInstance().registry.register(blueprint)
+
+// 代码化定制蓝图（等价 Setting.yml，见 §11.2）
+MonolithAPI.getInstance().io.loadBuiltMNB(file)!!.transform {
+    controllerRebarKey(NamespacedKey("myplugin", "my_controller"))
+    controllerMaterial(Material.STRUCTURE_BLOCK)
+    scaffoldMaterials(mapOf(Material.IRON_BLOCK to Material.CONCRETE))
+    overrideRebar(Vector3i(1, 0, 0), NamespacedKey("myplugin", "input_hatch"), preview = Material.HOPPER)
+    overrideLoose(Vector3i(2, 0, 0), Material.OAK_STAIRS)
+    rotate(scaffoldDegrees = 0, assembledDegrees = 180)
+    slot("input", Vector3i(1, 0, 0))
+    displayOverride(Vector3i(2, 2, 1), type = "block", block = "glass", group = "screen")
+    customData("tier", 2)
+    meta("机器名", "描述", "作者")
+}
 
 val components = MonolithComponents.fromMNB(blueprint)
 components.replace(position, component)
@@ -394,7 +497,7 @@ blueprint.getCustomString("tier")
 blueprint.customData
 ~~~
 
-## 12. 设计边界
+## 13. 设计边界
 
 MonolithLib 负责结构是什么、如何建造、何时成型、如何回退以及如何显示。Rebar 控制器负责机器是什么、如何交互、如何处理库存和物流以及成型后做什么。通过这两层分离，开发者可以用 Settings 快速调空间和视觉参数，也可以在 Kotlin 中覆盖端口组件和业务规则，而不必把整套机器逻辑复制进蓝图文件。
 

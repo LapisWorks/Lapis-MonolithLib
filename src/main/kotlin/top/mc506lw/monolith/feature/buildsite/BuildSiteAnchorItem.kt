@@ -31,7 +31,11 @@ class BuildSiteAnchorItem(stack: ItemStack) : RebarItem(stack), BlockInteractReb
     companion object {
         val KEY = NamespacedKey(MonolithLib.instance, "build_site_anchor")
 
-        /** 为指定蓝图创建展位物品 */
+        /** PDC key：蓝图 ID。物品契约见 [BuildSiteListener.readAnchorItemBlueprintId]。 */
+        @JvmField
+        val BLUEPRINT_ID_KEY: NamespacedKey = NamespacedKey(MonolithLib.instance, "blueprint_id")
+
+        /** 为指定蓝图创建展位物品。 */
         fun createItem(blueprintId: String): ItemStack {
             val item = ItemStackBuilder.rebar(BuildSiteAnchorBlock.MATERIAL, KEY)
                 .name(top.mc506lw.monolith.common.I18n.translatable(
@@ -41,12 +45,28 @@ class BuildSiteAnchorItem(stack: ItemStack) : RebarItem(stack), BlockInteractReb
 
             val meta = item.itemMeta ?: return item
             meta.persistentDataContainer.set(
-                NamespacedKey(MonolithLib.instance, "blueprint_id"),
+                BLUEPRINT_ID_KEY,
                 PersistentDataType.STRING,
                 blueprintId
             )
             item.itemMeta = meta
             return item
+        }
+
+        /**
+         * 基于任意 [RebarItem] 生成锚点物品，避免依赖固定材质。
+         * 生成的物品会设置蓝图 ID 的 PDC，行为与 [createItem] 一致。
+         */
+        fun asAnchor(baseStack: ItemStack, blueprintId: String): ItemStack {
+            val copy = baseStack.clone()
+            val meta = copy.itemMeta ?: return copy
+            meta.persistentDataContainer.set(
+                BLUEPRINT_ID_KEY,
+                PersistentDataType.STRING,
+                blueprintId
+            )
+            copy.itemMeta = meta
+            return copy
         }
     }
 }

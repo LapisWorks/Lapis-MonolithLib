@@ -104,6 +104,7 @@ class MonolithLib : JavaPlugin(), RebarAddon {
         StructurePreviewManager.cleanup()
         StructureBuildManager.cleanup()
         BuildSiteRegistry.cleanup()
+        top.mc506lw.monolith.feature.buildsite.BuildSiteAsync.shutdown()
         top.mc506lw.monolith.feature.buildsite.EasyBuildManager.cleanup()
         top.mc506lw.monolith.feature.buildsite.PrinterManager.cleanup()
         top.mc506lw.monolith.feature.buildsite.LitematicaModeManager.cleanup()
@@ -166,6 +167,7 @@ class MonolithLib : JavaPlugin(), RebarAddon {
         server.pluginManager.registerEvents(chunkHandler, this)
         server.pluginManager.registerEvents(RebarControllerListener, this)
         server.pluginManager.registerEvents(FormedStructureListener, this)
+        server.pluginManager.registerEvents(top.mc506lw.monolith.integration.ScaffoldChunkLoader, this)
         server.pluginManager.registerEvents(buildSiteListener, this)
         server.pluginManager.registerEvents(top.mc506lw.monolith.feature.buildsite.EasyBuildManager, this)
     }
@@ -769,7 +771,8 @@ class MonolithLib : JavaPlugin(), RebarAddon {
             top.mc506lw.monolith.core.model.BuildStage.ASSEMBLED
         val scan = top.mc506lw.monolith.feature.editor.SelectionScanner.captureShape(
             selection,
-            captureDisplay = option != "--no-displays"
+            captureDisplay = option != "--no-displays",
+            captureAir = stage == "scaffold"
         )
         if (scan == null) {
             sender.sendMessage(I18n.Message.Command.Edit.saveFailed("扫描选区失败"))

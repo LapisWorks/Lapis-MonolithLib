@@ -55,7 +55,7 @@ object MnbShapeReader : ShapeReader {
                     try { Bukkit.createBlockData(blockDataStr) } catch (e: Exception) { null }
                 } else null
                 
-                if (blockData != null && !blockData.material.isAir) {
+                if (blockData != null) {
                     builder.addBlock(x, y, z, blockData)
                 }
             }

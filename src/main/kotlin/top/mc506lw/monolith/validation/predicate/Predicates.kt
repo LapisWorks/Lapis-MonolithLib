@@ -66,7 +66,7 @@ object Predicates {
     }
     
     fun material(material: Material): Predicate {
-        return MaterialPredicate(material)
+        return MaterialPredicate.of(material)
     }
 
     fun any(): Predicate = AnyPredicate

@@ -6,6 +6,7 @@ import org.bukkit.block.data.BlockData
 import top.mc506lw.monolith.core.math.Vector3i
 import top.mc506lw.monolith.core.model.Blueprint
 import top.mc506lw.monolith.core.transform.BlockStateRotator
+import top.mc506lw.monolith.validation.predicate.RebarPredicate
 
 /**
  * The MNB supplies the structure's default components. Controllers may replace
@@ -35,6 +36,9 @@ class MonolithComponents private constructor(
          * controller position itself** (that block is the Rebar controller, never a vanilla
          * component). Applies the structure's facing rotation so that `checkFormed` matches
          * the rotated blocks placed during finalize.
+         *
+         * Positions whose effective predicate is a [RebarPredicate] become rebar components
+         * (they accept the corresponding Rebar block), matching overrides/rebar behaviour.
          */
         fun fromMNB(blueprint: Blueprint, rotationSteps: Int = 0): MonolithComponents {
             val center = blueprint.meta.controllerOffset
@@ -46,12 +50,18 @@ class MonolithComponents private constructor(
                         entry.position.y - center.y,
                         entry.position.z - center.z
                     )
-                    val data = if (rotationSteps == 0) {
-                        entry.blockData.clone()
-                    } else {
-                        BlockStateRotator.rotate(entry.blockData.clone(), rotationSteps)
+                    val component = when (val predicate = entry.effectivePredicate) {
+                        is RebarPredicate -> MultiblockComponent.of(emptyList(), listOf(predicate.key))
+                        else -> {
+                            val data = if (rotationSteps == 0) {
+                                entry.blockData.clone()
+                            } else {
+                                BlockStateRotator.rotate(entry.blockData.clone(), rotationSteps)
+                            }
+                            MultiblockComponent.of(data)
+                        }
                     }
-                    relative to MultiblockComponent.of(data)
+                    relative to component
                 }.toMutableMap())
         }
 

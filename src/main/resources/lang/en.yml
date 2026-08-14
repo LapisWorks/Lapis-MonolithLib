@@ -314,6 +314,10 @@ chat:
     err_no_blueprint_controller: "<red>[MonolithLib] This multiblock has no associated blueprint</red>"
     disassemble_success: "<green>[MonolithLib] Disassembled: build site restored, continue building</green>"
     err_disassemble_failed: "<red>[MonolithLib] Disassembly failed: could not place build site anchor</red>"
+    detail_missing_material: "<gray>Also <white>%count%</white> positions with wrong material:</gray>"
+    detail_missing_rebar: "<gray>Also <white>%count%</white> positions need a Rebar block:</gray>"
+    detail_position: "<gray>  (%x%, %y%, %z%) → <white>%hint%</white></gray>"
+    detail_more: "<gray>... and %count% more not shown</gray>"
 
   # ─── Build Mode (EasyBuild + Printer merged) ───
   build_mode:

@@ -6,6 +6,7 @@ import org.bukkit.Particle
 import org.bukkit.Sound
 import org.bukkit.block.data.BlockData
 import org.bukkit.entity.Player
+import org.bukkit.inventory.ItemStack
 import org.bukkit.scheduler.BukkitRunnable
 import top.mc506lw.monolith.common.I18n
 import top.mc506lw.monolith.core.math.Vector3i
@@ -13,6 +14,7 @@ import top.mc506lw.monolith.core.model.Blueprint
 import top.mc506lw.monolith.validation.predicate.Predicate
 import top.mc506lw.monolith.validation.predicate.Predicates
 import top.mc506lw.monolith.validation.predicate.RotatedPredicate
+import top.mc506lw.monolith.validation.predicate.rebarKeyOfPredicate
 import top.mc506lw.monolith.core.transform.BlockStateRotator
 import top.mc506lw.monolith.core.transform.CoordinateTransform
 import top.mc506lw.monolith.core.transform.Facing
@@ -48,14 +50,15 @@ class StructureBuilder(
             val originalPreview = block.blockData ?: Material.STONE.createBlockData()
             val rotatedBlockData = BlockStateRotator.rotate(originalPreview, rotationSteps)
             
-            val predicate = Predicates.strict(block.blockData)
+            val predicate = block.effectivePredicate
             val rotatedPredicate = RotatedPredicate(predicate, rotationSteps)
             
             entries.add(BuildEntry(
                 worldPos = worldPos,
                 blockData = rotatedBlockData,
                 material = rotatedBlockData.material,
-                predicate = rotatedPredicate
+                predicate = rotatedPredicate,
+                rebarKey = predicate.rebarKeyOfPredicate()
             ))
         }
         
@@ -66,6 +69,7 @@ class StructureBuilder(
         val world = controllerLocation.world ?: return BuildCheckResult.WORLD_UNLOADED
         
         val materialCounts = mutableMapOf<Material, Int>()
+        val rebarKeyCounts = mutableMapOf<org.bukkit.NamespacedKey, Int>()
         val conflicts = mutableListOf<Vector3i>()
         
         for (entry in blocksToPlace) {
@@ -76,7 +80,11 @@ class StructureBuilder(
             }
             
             if (isSurvival && block.type.isAir) {
-                materialCounts[entry.material] = (materialCounts[entry.material] ?: 0) + 1
+                if (entry.rebarKey != null) {
+                    rebarKeyCounts[entry.rebarKey] = (rebarKeyCounts[entry.rebarKey] ?: 0) + 1
+                } else {
+                    materialCounts[entry.material] = (materialCounts[entry.material] ?: 0) + 1
+                }
             }
         }
         
@@ -90,6 +98,7 @@ class StructureBuilder(
         
         val inventory = player.inventory
         val missing = mutableMapOf<Material, Int>()
+        val missingRebar = mutableMapOf<org.bukkit.NamespacedKey, Int>()
         
         for ((material, required) in materialCounts) {
             var remaining = required
@@ -107,10 +116,24 @@ class StructureBuilder(
             }
         }
         
-        return if (missing.isEmpty()) {
+        for ((key, required) in rebarKeyCounts) {
+            var remaining = required
+            for (item in inventory.contents) {
+                if (item != null && isRebarItem(item, key)) {
+                    val take = minOf(item.amount, remaining)
+                    remaining -= take
+                    if (remaining <= 0) break
+                }
+            }
+            if (remaining > 0) {
+                missingRebar[key] = remaining
+            }
+        }
+        
+        return if (missing.isEmpty() && missingRebar.isEmpty()) {
             BuildCheckResult.SUCCESS
         } else {
-            BuildCheckResult.MISSING_MATERIALS(missing)
+            BuildCheckResult.MISSING_MATERIALS(missing, missingRebar)
         }
     }
     
@@ -136,6 +159,9 @@ class StructureBuilder(
                 player.sendMessage(I18n.Message.Builder.errInsufficientMaterials)
                 missing.forEach { (material, count) ->
                     player.sendMessage(I18n.Message.Builder.missingMaterial(material.name, count))
+                }
+                checkResult.missingRebar.forEach { (key, count) ->
+                    player.sendMessage(I18n.Message.Builder.missingMaterial("${key.namespace}:${key.key} (Rebar)", count))
                 }
                 return false
             }
@@ -179,11 +205,21 @@ class StructureBuilder(
                     val block = world.getBlockAt(entry.worldPos.x, entry.worldPos.y, entry.worldPos.z)
                     
                     if (block.type.isAir) {
-                        if (isSurvival) {
-                            consumeMaterial(entry.material)
+                        if (entry.rebarKey != null) {
+                            val placed = try {
+                                io.github.pylonmc.rebar.block.BlockStorage.placeBlock(block, entry.rebarKey) != null
+                            } catch (e: Exception) {
+                                false
+                            }
+                            if (!placed) {
+                                // Rebar 方块放置失败（如未注册），跳过
+                                continue
+                            }
+                            if (isSurvival) consumeRebarItem(entry.rebarKey)
+                        } else {
+                            if (isSurvival) consumeMaterial(entry.material)
+                            block.blockData = entry.blockData
                         }
-                        
-                        block.blockData = entry.blockData
                         
                         if (builtThisTick < 10) {
                             playBuildEffects(block.location)
@@ -234,6 +270,22 @@ class StructureBuilder(
             if (remaining <= 0) break
         }
     }
+
+    private fun consumeRebarItem(key: org.bukkit.NamespacedKey) {
+        val inventory = player.inventory
+        for (i in 0 until inventory.size) {
+            val item = inventory.getItem(i) ?: continue
+            if (!isRebarItem(item, key)) continue
+            if (item.amount <= 1) inventory.setItem(i, null) else item.amount--
+            return
+        }
+    }
+
+    private fun isRebarItem(item: ItemStack, key: org.bukkit.NamespacedKey): Boolean = try {
+        io.github.pylonmc.rebar.item.RebarItem.fromStack(item)?.key == key
+    } catch (_: Exception) {
+        false
+    }
     
     private fun playBuildEffects(location: Location) {
         val world = location.world ?: return
@@ -265,13 +317,17 @@ class StructureBuilder(
         val worldPos: Vector3i,
         val blockData: BlockData,
         val material: Material,
-        val predicate: Predicate
+        val predicate: Predicate,
+        val rebarKey: org.bukkit.NamespacedKey? = null
     )
     
     sealed class BuildCheckResult {
         object SUCCESS : BuildCheckResult()
         object WORLD_UNLOADED : BuildCheckResult()
         data class CONFLICTS(val conflicts: List<Vector3i>) : BuildCheckResult()
-        data class MISSING_MATERIALS(val missing: Map<Material, Int>) : BuildCheckResult()
+        data class MISSING_MATERIALS(
+            val missing: Map<Material, Int>,
+            val missingRebar: Map<org.bukkit.NamespacedKey, Int> = emptyMap()
+        ) : BuildCheckResult()
     }
 }

@@ -24,6 +24,8 @@ interface IOFacade {
     fun loadShape(file: File, format: String? = null): Shape?
     fun loadRawMNB(file: File): Blueprint?
     fun loadBuiltMNB(file: File): Blueprint?
+    /** 直接从输入流读取成品 .mnb（如 jar 资源），无需先落盘。 */
+    fun loadBuiltMNB(input: java.io.InputStream): Blueprint?
     fun compileRawToBuilt(rawFile: File, configFile: File): Blueprint?
     fun getSupportedFormats(): List<String>
     fun getSupportedExtensions(): Set<String>
@@ -56,7 +58,10 @@ interface MonolithAPI {
         private var instance: MonolithAPI? = null
 
         fun getInstance(): MonolithAPI {
-            return instance ?: throw IllegalStateException("MonolithAPI not initialized")
+            return instance ?: throw IllegalStateException(
+                "MonolithAPI not initialized — MonolithLib 尚未完成初始化。请确认你的插件 depend: [MonolithLib] " +
+                "（默认 POSTWORLD 加载，晚于 MonolithLib 的 STARTUP），且不要在 MonolithLib 就绪前调用本 API。"
+            )
         }
 
         internal fun setInstance(api: MonolithAPI) {

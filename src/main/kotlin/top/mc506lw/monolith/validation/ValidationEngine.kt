@@ -7,9 +7,7 @@ import top.mc506lw.monolith.core.model.Blueprint
 import top.mc506lw.monolith.core.model.Shape
 import top.mc506lw.monolith.core.transform.CoordinateTransform
 import top.mc506lw.monolith.core.transform.Facing
-import top.mc506lw.monolith.validation.predicate.MaterialPredicate
 import top.mc506lw.monolith.validation.predicate.Predicate
-import top.mc506lw.monolith.validation.predicate.Predicates
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -73,8 +71,7 @@ class ValidationEngine(
             if (!world.isChunkLoaded(worldPos.x shr 4, worldPos.z shr 4)) continue
 
             val block = world.getBlockAt(worldPos.x, worldPos.y, worldPos.z)
-            val predicate = MaterialPredicate(blockEntry.blockData.material)
-            if (predicate.testMaterialOnly(block.blockData, Predicate.PredicateContext(position = blockEntry.position))) {
+            if (blockEntry.effectivePredicate.testMaterialOnly(block.blockData, Predicate.PredicateContext(position = blockEntry.position, block = block))) {
                 matched++
             }
         }
@@ -105,8 +102,7 @@ class ValidationEngine(
             if (!world.isChunkLoaded(worldPos.x shr 4, worldPos.z shr 4)) continue
 
             val block = world.getBlockAt(worldPos.x, worldPos.y, worldPos.z)
-            val predicate = MaterialPredicate(blockEntry.blockData.material)
-            if (predicate.testMaterialOnly(block.blockData, Predicate.PredicateContext(position = blockEntry.position))) {
+            if (blockEntry.effectivePredicate.testMaterialOnly(block.blockData, Predicate.PredicateContext(position = blockEntry.position, block = block))) {
                 matched++
             }
         }
@@ -142,8 +138,8 @@ class ValidationEngine(
             if (!blockLocation.chunk.isLoaded) continue
 
             val blockData = blockLocation.block.blockData
-            val predicate = Predicates.strict(blockEntry.blockData)
-            if (predicate.testMaterialOnly(blockData, Predicate.PredicateContext(position = blockEntry.position))) {
+            val predicate = blockEntry.effectivePredicate
+            if (predicate.testMaterialOnly(blockData, Predicate.PredicateContext(position = blockEntry.position, block = blockLocation.block))) {
                 matchedCount++
             } else {
                 errors.add(ValidationError(position = blockLocation, expected = predicate, actual = blockData, message = "Position ${blockEntry.position} mismatch"))
@@ -169,8 +165,8 @@ class ValidationEngine(
             if (!blockLocation.chunk.isLoaded) continue
 
             val actualBlockData = blockLocation.block.blockData
-            val predicate = Predicates.strict(blockEntry.blockData)
-            val context = Predicate.PredicateContext(position = blockEntry.position)
+            val predicate = blockEntry.effectivePredicate
+            val context = Predicate.PredicateContext(position = blockEntry.position, block = blockLocation.block)
 
             if (predicate.testMaterialOnly(actualBlockData, context)) {
                 matchedCount++

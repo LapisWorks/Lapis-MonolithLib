@@ -80,9 +80,30 @@ class MultiblockWrench(stack: ItemStack) : RebarItem(stack), BlockInteractRebarI
         }
 
         if (rate < 1.0) {
-            val missing = ((1.0 - rate) * (bp.blockCount)).toInt()
+            // missing 基于脚手架实际未匹配数（ghostData 规模），而非 assembled 方块总数
+            val missing = anchor.getGhostCount() - anchor.getMatchedCount()
             player.sendMessage(I18n.Message.Wrench.errNotComplete((rate * 100).toInt(), missing))
             player.sendMessage(I18n.Message.Wrench.hintContinueBuilding)
+
+            // 逐位置明细，区分材质缺失与 Rebar 方块缺失
+            val issues = anchor.getIssues()
+            val materialIssues = issues.filter { !it.isRebar }.take(8)
+            val rebarIssues = issues.filter { it.isRebar }.take(8)
+            if (materialIssues.isNotEmpty()) {
+                player.sendMessage(I18n.Message.Wrench.detailMissingMaterial(materialIssues.size))
+                materialIssues.forEach {
+                    player.sendMessage(I18n.Message.Wrench.detailPosition(it.worldPos, it.preview_hint))
+                }
+            }
+            if (rebarIssues.isNotEmpty()) {
+                player.sendMessage(I18n.Message.Wrench.detailMissingRebar(rebarIssues.size))
+                rebarIssues.forEach {
+                    player.sendMessage(I18n.Message.Wrench.detailPosition(it.worldPos, it.hint))
+                }
+            }
+            if (issues.size > 16) {
+                player.sendMessage(I18n.Message.Wrench.detailMore(issues.size - 16))
+            }
             return
         }
 
@@ -125,12 +146,15 @@ class MultiblockWrench(stack: ItemStack) : RebarItem(stack), BlockInteractRebarI
      * 找到点击方块所属的多方块的控制器方块。
      */
     private fun findMultiblockController(clickedBlock: org.bukkit.block.Block): org.bukkit.block.Block? {
+        // 直接命中组件 → O(1) AABB 粗筛 + 蓝图精确判定（不再 5³ 扫描 125 个方块）
+        MNBController.findControllerForComponent(clickedBlock)?.let { return it.block }
+
         val clickedRebar = BlockStorage.get(clickedBlock)
         if (clickedRebar is MNBController) {
             return clickedBlock
         }
 
-        // 在附近搜索 (5x5x5)
+        // 兜底：在附近搜索 (5x5x5)
         val world = clickedBlock.world
         for (dx in -5..5) {
             for (dy in -5..5) {

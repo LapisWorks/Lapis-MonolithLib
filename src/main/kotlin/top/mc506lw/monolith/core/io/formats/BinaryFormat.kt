@@ -313,7 +313,10 @@ object BinaryFormat : StructureSerializer {
                 } else predicate?.previewBlockData
                 
                 if (blockData != null) {
-                    val effectivePredicate = if (predicate is RebarPredicate) predicate else null
+                    val effectivePredicate = if (predicate is RebarPredicate) predicate
+                        else if (predicate is AirPredicate) predicate
+                        else if (predicate is LoosePredicate) predicate
+                        else null
                     blocks.add(BlockEntry(
                         position = Vector3i(x, y, z),
                         blockData = blockData,

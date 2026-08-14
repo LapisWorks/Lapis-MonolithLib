@@ -26,3 +26,10 @@ class RebarPredicate(
     
     override fun toString(): String = "RebarPredicate(key=$rebarKey)"
 }
+
+/** 穿透 [RotatedPredicate] 等包装，取出底层要求的 Rebar key（无则 null）。 */
+fun Predicate.rebarKeyOfPredicate(): NamespacedKey? = when (this) {
+    is RebarPredicate -> key
+    is RotatedPredicate -> original.rebarKeyOfPredicate()
+    else -> null
+}
