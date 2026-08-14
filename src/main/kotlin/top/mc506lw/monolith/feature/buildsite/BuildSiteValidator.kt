@@ -157,13 +157,16 @@ object BuildSiteValidator {
                 centerOffset = centerOffset
             )
             
-            blockPositions.add(worldPos)
+            // 包围盒始终包含全部位置（含自由位置）
             minX = minOf(minX, worldPos.x)
             minY = minOf(minY, worldPos.y)
             minZ = minOf(minZ, worldPos.z)
             maxX = maxOf(maxX, worldPos.x)
             maxY = maxOf(maxY, worldPos.y)
             maxZ = maxOf(maxZ, worldPos.z)
+            // 自由位置（脚手架空气 + 成型同为空气）：融入地形，不参与液体/不可破坏检查
+            if (blueprint.isFreeSpacePosition(blockEntry.position)) continue
+            blockPositions.add(worldPos)
         }
         
         val boundingBox = BoundingBox(minX, minY, minZ, maxX, maxY, maxZ)

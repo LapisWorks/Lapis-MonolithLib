@@ -222,10 +222,12 @@ class BuildSiteAnchorBlock(
         val rebarKey: org.bukkit.NamespacedKey? = null
     )
 
-    /** 获取所有 ghost 的公开副本（供 EasyBuild/Printer 使用） */
+    /** 获取所有 ghost 的公开副本（供 EasyBuild/Printer 使用）。自由位置无物可建，跳过。 */
     fun getGhostEntries(): List<PublicGhostEntry> {
         ensureGhostData()
-        return ghostData.map { PublicGhostEntry(it.worldPos, it.previewBlockData, it.predicate.rebarKeyOfPredicate()) }
+        return ghostData
+            .filter { it.predicate !is top.mc506lw.monolith.validation.predicate.FreeSpacePredicate }
+            .map { PublicGhostEntry(it.worldPos, it.previewBlockData, it.predicate.rebarKeyOfPredicate()) }
     }
 
     /**
@@ -324,14 +326,25 @@ class BuildSiteAnchorBlock(
                 BlockStateRotator.rotate(blockEntry.blockData.clone(), rotationSteps)
             }
             val worldPos = Vector3i(wx, wy, wz)
+            // 自由位置（脚手架空气 + 成型同为空气）：任意方块都算匹配，用于融入地形。
+            // 覆盖原 AirPredicate，updateGhostDisplay / requestCompletionCheck / 破坏判定自动生效。
+            val basePredicate = blockEntry.predicate
+                ?: top.mc506lw.monolith.validation.predicate.MaterialPredicate.of(rotatedData.material)
+            val predicate = if (
+                basePredicate is top.mc506lw.monolith.validation.predicate.AirPredicate &&
+                bp.assembledShape.getBlockAt(blockEntry.position) == null
+            ) {
+                top.mc506lw.monolith.validation.predicate.FreeSpacePredicate
+            } else {
+                basePredicate
+            }
             val entry = GhostEntry(
                 worldPos = worldPos,
                 relativePos = blockEntry.position,
                 previewBlockData = rotatedData,
                 // anchor 只用 testMaterialOnly / rebarKeyOfPredicate（RotatedPredicate 委托结果相同），
                 // 直接存原始 predicate（同材质共享实例），省去百万次 RotatedPredicate 包装构造（曾占 13%+ CPU）
-                predicate = blockEntry.predicate
-                    ?: top.mc506lw.monolith.validation.predicate.MaterialPredicate.of(rotatedData.material)
+                predicate = predicate
             )
             newData.add(entry)
             newByPos[worldPos] = entry
@@ -365,6 +378,8 @@ class BuildSiteAnchorBlock(
         )
         if (relative == bp.meta.controllerOffset) return null
         val entry = bp.scaffoldShape.getBlockAt(relative) ?: return null
+        // 自由位置（脚手架空气 + 成型同为空气）：无物可建，跳过（否则 EasyBuild/Printer 会写入空气清掉地形）
+        if (bp.isFreeSpacePosition(relative)) return null
         val rotated = BlockStateRotator.rotate(entry.blockData.clone(), facing.rotationSteps)
         return PublicGhostEntry(worldPos, rotated, entry.predicate?.rebarKeyOfPredicate())
     }

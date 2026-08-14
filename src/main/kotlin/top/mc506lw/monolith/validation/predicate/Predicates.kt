@@ -31,6 +31,20 @@ object AnyPredicate : Predicate {
     override val hint: String? = "任意非空方块"
 }
 
+/**
+ * 自由空间：任何方块都匹配（含空气、地形方块）。
+ * 用于"脚手架是空气、成型后也是空气"的位置——结构融入地形时这些位置不参与铺设，
+ * 成型/解体都不会触碰，因此建造阶段不应因地形方块而显示不匹配。
+ */
+object FreeSpacePredicate : Predicate {
+    override fun test(blockData: BlockData, context: Predicate.PredicateContext): Boolean = true
+
+    override fun testMaterialOnly(blockData: BlockData, context: Predicate.PredicateContext): Boolean = true
+
+    override val previewBlockData: BlockData? = null
+    override val hint: String? = "自由空间（地形可保留）"
+}
+
 object Predicates {
     fun air(): Predicate = AirPredicate
     
@@ -70,6 +84,8 @@ object Predicates {
     }
 
     fun any(): Predicate = AnyPredicate
+
+    fun freeSpace(): Predicate = FreeSpacePredicate
     
     private fun parseNamespacedKey(key: String): NamespacedKey {
         val parts = key.split(":")

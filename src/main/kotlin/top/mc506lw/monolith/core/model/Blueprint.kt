@@ -3,6 +3,7 @@ package top.mc506lw.monolith.core.model
 import org.bukkit.NamespacedKey
 import org.joml.Vector3f
 import top.mc506lw.monolith.core.math.Vector3i
+import top.mc506lw.monolith.validation.predicate.AirPredicate
 
 data class BlueprintMeta(
     val displayName: String = "",
@@ -30,6 +31,17 @@ class Blueprint(
     val sizeY: Int get() = assembledShape.boundingBox.height
     val sizeZ: Int get() = assembledShape.boundingBox.depth
     val blockCount: Int get() = assembledShape.blocks.size
+
+    /**
+     * 脚手架该位置是空气、且成型后该位置也没有方块（同样为空气）→ **自由位置**：
+     * 建造阶段任意方块（含地形）都算匹配，成型/解体都不会触碰该位置。
+     * 而"脚手架空气但成型有方块"的位置（如成型时才填充的内部）仍保持严格——脚手架必须为空。
+     */
+    fun isFreeSpacePosition(relative: Vector3i): Boolean {
+        val scaffoldEntry = scaffoldShape.getBlockAt(relative) ?: return false
+        if (scaffoldEntry.predicate !is AirPredicate) return false
+        return assembledShape.getBlockAt(relative) == null
+    }
 
     @Deprecated("Use scaffoldShape or assembledShape", ReplaceWith("assembledShape"))
     val shape: Shape get() = assembledShape
