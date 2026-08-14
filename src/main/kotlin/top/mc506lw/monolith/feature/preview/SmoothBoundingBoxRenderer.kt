@@ -60,6 +60,10 @@ class SmoothBoundingBoxRenderer(
     private var currentBox: BoundingBoxData? = null
     private var targetBox: BoundingBoxData? = null
 
+    /** 旋转插值参数：非 0 时角点沿绕 [rotatePivot] 垂直轴的圆弧运动，而不是直线。 */
+    private var rotateDegrees: Int = 0
+    private var rotatePivot = Vector3f()
+
     private var updateTask: BukkitTask? = null
     var isActive: Boolean = false
         private set
@@ -107,8 +111,13 @@ class SmoothBoundingBoxRenderer(
 
         if (dist > maxMoveRadius || currentBox == null) {
             rebuildForBox(newBox)
+            rotateDegrees = 0
         } else {
-            startInterpolation(newBox)
+            // 先按旧模式（可能是旋转）快照当前位置，再切回直线插值
+            val currentEdgePositions = snapshotCurrentEdgePositions()
+            val currentCornerPositions = snapshotCurrentCornerPositions()
+            rotateDegrees = 0
+            beginInterpolationFrom(newBox, currentEdgePositions, currentCornerPositions)
             animationState = AnimationState.ANIMATING
         }
     }
@@ -122,6 +131,36 @@ class SmoothBoundingBoxRenderer(
         moveTo(newBox)
     }
 
+    /**
+     * 围绕 [pivotX]/[pivotZ]（世界坐标，垂直轴）旋转 [degrees] 度到 [newBox]。
+     * 角点/端点沿**圆弧**运动（物理旋转，绕轴摆动），而非直线插值。
+     * 无论盒子多大都动画（旋转总是物理合理的，不受 maxMoveRadius 限制）。
+     */
+    fun rotateTo(newBox: BoundingBoxData, pivotX: Double, pivotZ: Double, degrees: Int) {
+        if (!isActive) {
+            show(newBox)
+            return
+        }
+
+        targetBox = newBox
+
+        if (currentBox == null) {
+            rebuildForBox(newBox)
+            rotateDegrees = 0
+            return
+        }
+
+        // 关键：先按**旧模式**快照当前位置，再切换旋转参数。
+        // 若先设置 rotateDegrees，静止的角点会被新角度算一遍（瞬移），
+        // 动画中又用同角度再转一次（双重旋转）→ 框架散架。
+        val currentEdgePositions = snapshotCurrentEdgePositions()
+        val currentCornerPositions = snapshotCurrentCornerPositions()
+        rotateDegrees = degrees
+        rotatePivot = Vector3f(pivotX.toFloat(), 0f, pivotZ.toFloat())
+        beginInterpolationFrom(newBox, currentEdgePositions, currentCornerPositions)
+        animationState = AnimationState.ANIMATING
+    }
+
 
     fun hide() {
         stopUpdateTask()
@@ -131,6 +170,8 @@ class SmoothBoundingBoxRenderer(
         corners.clear()
         currentBox = null
         targetBox = null
+        rotateDegrees = 0
+        rotatePivot = Vector3f()
         isActive = false
         animationState = AnimationState.IDLE
     }
@@ -167,20 +208,26 @@ class SmoothBoundingBoxRenderer(
         }
     }
 
-    private fun startInterpolation(newBox: BoundingBoxData) {
-        val currentEdgePositions: MutableList<Pair<Vector3f, Vector3f>> = edges.map { edge ->
+    /** 快照当前显示位置（按当前动画模式/进度计算，模式切换前调用）。 */
+    private fun snapshotCurrentEdgePositions(): List<Pair<Vector3f, Vector3f>> =
+        edges.map { edge ->
             val easedP = easeOutExpo(edge.progress)
             Pair(
-                lerp(edge.fromStart, edge.toStart, easedP),
-                lerp(edge.fromEnd, edge.toEnd, easedP)
+                pathPos(edge.fromStart, edge.toStart, easedP),
+                pathPos(edge.fromEnd, edge.toEnd, easedP)
             )
-        }.toMutableList()
+        }
 
-        val currentCornerPositions: MutableList<Vector3f> = corners.map { corner ->
-            val easedP = easeOutExpo(corner.progress)
-            lerp(corner.fromPos, corner.toPos, easedP)
-        }.toMutableList()
+    private fun snapshotCurrentCornerPositions(): List<Vector3f> =
+        corners.map { corner ->
+            pathPos(corner.fromPos, corner.toPos, easeOutExpo(corner.progress))
+        }
 
+    private fun beginInterpolationFrom(
+        newBox: BoundingBoxData,
+        currentEdgePositions: List<Pair<Vector3f, Vector3f>>,
+        currentCornerPositions: List<Vector3f>
+    ) {
         currentBox = newBox
 
         val newEdgeDefs = computeEdgePositions(newBox)
@@ -281,10 +328,10 @@ class SmoothBoundingBoxRenderer(
         val startZ = edge.fromStart.z
         val loc = Location(world, startX.toDouble(), startY.toDouble(), startZ.toDouble())
         
-        val dx = edge.fromEnd.x - startX
-        val dy = edge.fromEnd.y - startY
-        val dz = edge.fromEnd.z - startZ
-        val length = kotlin.math.sqrt(dx * dx + dy * dy + dz * dz)
+        val dirX = edge.fromEnd.x - startX
+        val dirY = edge.fromEnd.y - startY
+        val dirZ = edge.fromEnd.z - startZ
+        val length = kotlin.math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ)
 
         if (length < 0.01f) return
 
@@ -295,21 +342,38 @@ class SmoothBoundingBoxRenderer(
                 d.isPersistent = false
                 d.brightness = Display.Brightness(15, 15)
                 d.viewRange = 500f
-
-                val scaleX = if (kotlin.math.abs(dx) > 0.001f) kotlin.math.abs(dx) else thickness
-                val scaleY = if (kotlin.math.abs(dy) > 0.001f) kotlin.math.abs(dy) else thickness
-                val scaleZ = if (kotlin.math.abs(dz) > 0.001f) kotlin.math.abs(dz) else thickness
-
-                d.transformation = Transformation(
-                    Vector3f(0f, 0f, 0f),
-                    AxisAngle4f(),
-                    Vector3f(scaleX, scaleY, scaleZ),
-                    AxisAngle4f()
-                )
+                applyEdgeTransform(d, Vector3f(dirX, dirY, dirZ), length)
             }
             edge.displayEntity = display
             edges.add(edge)
         } catch (_: Exception) {}
+    }
+
+    /** 边块沿 [dir] 方向拉伸：X 轴旋转对齐到 [dir]，长度 = |dir|，粗细 = thickness。 */
+    private fun applyEdgeTransform(display: BlockDisplay, dir: Vector3f, length: Float) {
+        display.transformation = Transformation(
+            Vector3f(0f, 0f, 0f),
+            rotationAlignXTo(dir),
+            Vector3f(length, thickness, thickness),
+            AxisAngle4f()
+        )
+    }
+
+    /** 将单位 X 轴 (1,0,0) 旋转到 [dir] 方向的四元数角轴。 */
+    private fun rotationAlignXTo(dir: Vector3f): AxisAngle4f {
+        val length = dir.length()
+        if (length < 1e-6f) return AxisAngle4f()
+        val x = dir.x / length
+        val y = dir.y / length
+        val z = dir.z / length
+        // cross = (1,0,0) × (x,y,z) = (0, -z, y)
+        val crossLen = kotlin.math.sqrt(y * y + z * z)
+        if (crossLen < 1e-6f) {
+            // dir ≈ ±X：不转或翻转 180°
+            return if (x >= 0) AxisAngle4f() else AxisAngle4f(kotlin.math.PI.toFloat(), 0f, 1f, 0f)
+        }
+        val angle = kotlin.math.acos(x.coerceIn(-1f, 1f))
+        return AxisAngle4f(angle, 0f, -z / crossLen, y / crossLen)
     }
 
     private fun createCorner(corner: CornerMarker) {
@@ -352,6 +416,8 @@ class SmoothBoundingBoxRenderer(
         val allComplete = edges.all { it.progress >= 1.0f } && corners.all { it.progress >= 1.0f }
         if (allComplete) {
             animationState = AnimationState.IDLE
+            // 注意：不清零 rotateDegrees —— 后续快照（下一次 moveTo/rotateTo）需要按
+            // 旧模式算出弧线终点作为起点；moveTo/rotateTo 各自在快照后重置/覆盖。
             stopUpdateTask()
             return
         }
@@ -363,28 +429,21 @@ class SmoothBoundingBoxRenderer(
             edge.progress = (edge.progress + step).coerceAtMost(1.0f)
 
             val easedProgress = easeOutExpo(edge.progress)
-            val currentStart = lerp(edge.fromStart, edge.toStart, easedProgress)
-            val currentEnd = lerp(edge.fromEnd, edge.toEnd, easedProgress)
+            val currentStart = pathPos(edge.fromStart, edge.toStart, easedProgress)
+            val currentEnd = pathPos(edge.fromEnd, edge.toEnd, easedProgress)
 
             val display = edge.displayEntity ?: continue
             if (!display.isValid) continue
 
             display.teleport(Location(world, currentStart.x.toDouble(), currentStart.y.toDouble(), currentStart.z.toDouble()))
 
-            val dx = currentEnd.x - currentStart.x
-            val dy = currentEnd.y - currentStart.y
-            val dz = currentEnd.z - currentStart.z
-
-            val scaleX = if (kotlin.math.abs(dx) > 0.001f) kotlin.math.abs(dx) else thickness
-            val scaleY = if (kotlin.math.abs(dy) > 0.001f) kotlin.math.abs(dy) else thickness
-            val scaleZ = if (kotlin.math.abs(dz) > 0.001f) kotlin.math.abs(dz) else thickness
-
-            display.transformation = Transformation(
-                Vector3f(0f, 0f, 0f),
-                AxisAngle4f(),
-                Vector3f(scaleX, scaleY, scaleZ),
-                AxisAngle4f()
-            )
+            val dirX = currentEnd.x - currentStart.x
+            val dirY = currentEnd.y - currentStart.y
+            val dirZ = currentEnd.z - currentStart.z
+            val length = kotlin.math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ)
+            if (length < 0.01f) continue
+            // 旋转中用方向+旋转矩阵渲染：横边在摆动过程中是斜段，轴对齐拉伸无法表达
+            applyEdgeTransform(display, Vector3f(dirX, dirY, dirZ), length)
         }
 
         for (corner in corners) {
@@ -392,7 +451,7 @@ class SmoothBoundingBoxRenderer(
             corner.progress = (corner.progress + step).coerceAtMost(1.0f)
 
             val easedProgress = easeOutExpo(corner.progress)
-            val currentPos = lerp(corner.fromPos, corner.toPos, easedProgress)
+            val currentPos = pathPos(corner.fromPos, corner.toPos, easedProgress)
 
             val display = corner.displayEntity ?: continue
             if (!display.isValid) continue
@@ -406,6 +465,29 @@ class SmoothBoundingBoxRenderer(
             a.x + (b.x - a.x) * t,
             a.y + (b.y - a.y) * t,
             a.z + (b.z - a.z) * t
+        )
+    }
+
+    /**
+     * 插值路径：旋转模式（[rotateDegrees] != 0）下沿绕 [rotatePivot] 的圆弧运动，
+     * 否则直线 [lerp]。圆弧半径 = from 到 pivot 的距离，保证"绕轴摆动"的物理感。
+     */
+    private fun pathPos(from: Vector3f, to: Vector3f, t: Float): Vector3f {
+        if (rotateDegrees == 0) return lerp(from, to, t)
+        return rotateAroundPivot(from, rotatePivot, rotateDegrees * t)
+    }
+
+    /** 绕 [pivot] 垂直轴（世界 XZ 平面）旋转 [angleDeg] 度。Y 不变。 */
+    private fun rotateAroundPivot(p: Vector3f, pivot: Vector3f, angleDeg: Float): Vector3f {
+        val rad = java.lang.Math.toRadians(angleDeg.toDouble())
+        val cos = java.lang.Math.cos(rad).toFloat()
+        val sin = java.lang.Math.sin(rad).toFloat()
+        val dx = p.x - pivot.x
+        val dz = p.z - pivot.z
+        return Vector3f(
+            pivot.x + (dx * cos - dz * sin),
+            p.y,
+            pivot.z + (dx * sin + dz * cos)
         )
     }
 

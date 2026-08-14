@@ -191,6 +191,70 @@ object BuildSiteValidator {
         )
     }
     
+    /**
+     * O(1) 计算旋转后的世界 AABB：只变换 Shape 已缓存包围盒的 8 个角点，
+     * 不遍历方块。用于预览旋转的高频路径（每次滚轮一格）。
+     */
+    fun computeBoundingBox(blueprint: Blueprint, anchorLocation: Location, facing: Facing): BoundingBox {
+        val transform = CoordinateTransform(facing)
+        val centerOffset = blueprint.meta.controllerOffset
+        val controllerPos = Vector3i(
+            anchorLocation.blockX,
+            anchorLocation.blockY,
+            anchorLocation.blockZ
+        )
+        val b = blueprint.scaffoldShape.boundingBox
+
+        var minX = Int.MAX_VALUE
+        var minY = Int.MAX_VALUE
+        var minZ = Int.MAX_VALUE
+        var maxX = Int.MIN_VALUE
+        var maxY = Int.MIN_VALUE
+        var maxZ = Int.MIN_VALUE
+
+        for (cx in intArrayOf(b.minX, b.maxX)) {
+            for (cy in intArrayOf(b.minY, b.maxY)) {
+                for (cz in intArrayOf(b.minZ, b.maxZ)) {
+                    val p = transform.toWorldPosition(controllerPos, Vector3i(cx, cy, cz), centerOffset)
+                    minX = minOf(minX, p.x); minY = minOf(minY, p.y); minZ = minOf(minZ, p.z)
+                    maxX = maxOf(maxX, p.x); maxY = maxOf(maxY, p.y); maxZ = maxOf(maxZ, p.z)
+                }
+            }
+        }
+        return BoundingBox(minX, minY, minZ, maxX, maxY, maxZ)
+    }
+
+    /**
+     * 轻量校验（预览旋转用）：AABB + 高度限制 + 站点冲突 + 附近站点，
+     * 全部基于缓存 AABB，无逐方块世界读取。液体/不可破坏等逐块检查留到确认时全量校验。
+     */
+    fun validateLight(blueprint: Blueprint, anchorLocation: Location, facing: Facing): ValidationResult {
+        val errors = mutableListOf<ValidationError>()
+        val warnings = mutableListOf<ValidationWarning>()
+
+        val world = anchorLocation.world
+        if (world == null) {
+            errors.add(ValidationError(
+                ErrorType.WORLD_BORDER,
+                "世界不存在"
+            ))
+            return ValidationResult(false, errors, warnings, BoundingBox(0, 0, 0, 0, 0, 0))
+        }
+
+        val boundingBox = computeBoundingBox(blueprint, anchorLocation, facing)
+
+        errors.addAll(checkHeightLimit(world, boundingBox))
+        errors.addAll(checkSiteConflicts(world, boundingBox, anchorLocation))
+        warnings.addAll(checkNearbySites(world, boundingBox, anchorLocation))
+
+        return ValidationResult(
+            isValid = errors.isEmpty(),
+            errors = errors,
+            warnings = warnings,
+            boundingBox = boundingBox
+        )
+    }
+    
     private fun checkHeightLimit(world: World, box: BoundingBox): List<ValidationError> {
         val errors = mutableListOf<ValidationError>()
         val minHeight = world.minHeight

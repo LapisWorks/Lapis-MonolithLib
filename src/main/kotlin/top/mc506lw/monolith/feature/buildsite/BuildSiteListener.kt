@@ -48,6 +48,9 @@ class BuildSiteListener : Listener {
     private val pendingConfirmations = ConcurrentHashMap<UUID, PendingConfirmation>()
     private val confirmTimeoutMs = 30_000L
 
+    /** 玩家上次使用的朝向（旋转/确认后记住，下次预览默认沿用，不再退回 yaw 方向）。 */
+    private val lastFacingByPlayer = ConcurrentHashMap<UUID, Facing>()
+
     // ---------- 展位放置/确认 ----------
 
     @EventHandler(priority = EventPriority.HIGH)
@@ -92,7 +95,8 @@ class BuildSiteListener : Listener {
         val clickedBlock = event.clickedBlock ?: return
         val blockFace = event.blockFace
         val targetLocation = clickedBlock.getRelative(blockFace).location
-        val facing = Facing.fromYaw(player.location.yaw)
+        // 默认朝向 = 上次记住的朝向；没有则取当前 yaw
+        val facing = lastFacingByPlayer[player.uniqueId] ?: Facing.fromYaw(player.location.yaw)
 
         val pending = pendingConfirmations[player.uniqueId]
         if (pending != null
@@ -102,7 +106,8 @@ class BuildSiteListener : Listener {
             && pending.targetLocation.blockZ == targetLocation.blockZ
             && System.currentTimeMillis() - pending.timestamp < confirmTimeoutMs
         ) {
-            confirmAnchorPlace(event, player, item, blueprint, targetLocation, facing)
+            // 朝向锁定：确认用预览时的朝向（pending.facing），不随当前 yaw 改变
+            confirmAnchorPlace(event, player, item, blueprint, targetLocation, pending.facing)
             return
         }
 
@@ -174,6 +179,8 @@ class BuildSiteListener : Listener {
         if (anchor != null) {
             anchor.initialize(blueprint.id, facing)
             anchor.renderForPlayer(player)
+            // 记住本次放置的朝向，下次预览默认沿用
+            lastFacingByPlayer[player.uniqueId] = facing
         }
 
         player.sendMessage(I18n.Message.BuildSite.created)
@@ -260,6 +267,7 @@ class BuildSiteListener : Listener {
     fun onPlayerQuit(event: PlayerQuitEvent) {
         val playerId = event.player.uniqueId
         pendingConfirmations.remove(playerId)
+        lastFacingByPlayer.remove(playerId)
         BuildSitePreviewManager.stopPreview(event.player)
         LitematicaModeManager.onPlayerQuit(playerId)
         top.mc506lw.monolith.feature.buildmode.PrinterTask.stop(event.player)
@@ -270,6 +278,41 @@ class BuildSiteListener : Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onPlayerItemHeld(event: PlayerItemHeldEvent) {
         val player = event.player
+
+        // 蹲下 + 主手持工地展位 + 预览激活 → 滚轮旋转预览朝向（不切物品栏、不取消预览）
+        if (player.isSneaking
+            && BuildSitePreviewManager.hasActivePreview(player)
+            && readAnchorItemBlueprintId(player.inventory.itemInMainHand) != null
+        ) {
+            val previousSlot = event.previousSlot
+            val newSlot = event.newSlot
+            // 滚轮滚动方向（处理物品栏 0↔8 环绕：滚轮一次滚动恒为 ±1）
+            var delta = (newSlot - previousSlot + 9) % 9
+            if (delta > 4) delta -= 9
+            if (delta != 0) {
+                event.isCancelled = true
+                // 复位物品栏，避免滚动把展位切走
+                player.inventory.heldItemSlot = previousSlot
+
+                // delta < 0（上滚）→ 顺时针；delta > 0（下滚）→ 逆时针
+                if (BuildSitePreviewManager.rotatePreview(player, clockwise = delta < 0)) {
+                    val preview = BuildSitePreviewManager.getPreview(player)
+                    // 同步 pending 朝向：确认时使用旋转后的朝向
+                    preview?.let { p ->
+                        pendingConfirmations[player.uniqueId]?.let { pending ->
+                            pendingConfirmations[player.uniqueId] = pending.copy(facing = p.facing)
+                        }
+                        // 记住旋转后的朝向，下次预览默认沿用
+                        lastFacingByPlayer[player.uniqueId] = p.facing
+                    }
+                    // actionbar 反馈新朝向（旋转过程中不刷屏）
+                    player.sendActionBar(I18n.Message.BuildSite.previewFacing(preview?.facing?.name ?: "?"))
+                }
+            }
+            return
+        }
+
+        // 原有逻辑：切换物品栏 → 取消预览
         if (BuildSitePreviewManager.hasActivePreview(player)) {
             player.sendMessage(I18n.Message.BuildSite.previewCancelledHotbarHint)
             BuildSitePreviewManager.stopPreview(player)

@@ -279,7 +279,7 @@ chat:
     preview_valid: "<green>✓ Validation passed, can place</green>"
     preview_errors: "<red>✗ Detected %count% issues:</red>"
     preview_warnings: "<gold>⚠ Warnings:</gold>"
-    preview_instructions: "<gray>Right-click to confirm, sneak+right-click to cancel</gray>"
+    preview_instructions: "<gray>Right-click to confirm · Sneak + scroll to rotate · Switch hotbar/wait to cancel</gray>"
     preview_auto_cancel: "<gray>Preview will auto-cancel in <red>%seconds%s</red> </gray>"
     preview_footer: "<yellow>======================================"
 

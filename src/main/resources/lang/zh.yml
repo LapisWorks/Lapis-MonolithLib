@@ -283,7 +283,7 @@ chat:
     preview_valid: "<green>✓ 验证通过，可以放置</green>"
     preview_errors: "<red>✗ 检测到 %count% 个问题：</red>"
     preview_warnings: "<gold>⚠ 警告：</gold>"
-    preview_instructions: "<gray>右键确认放置，潜行+右键取消</gray>"
+    preview_instructions: "<gray>右键确认放置 · 蹲下+滚轮旋转朝向 · 切换物品栏/等待自动取消</gray>"
     preview_auto_cancel: "<gray>预览将在 <red>%seconds%秒</red> 后自动取消</gray>"
     preview_footer: "<yellow>=============================="
 
