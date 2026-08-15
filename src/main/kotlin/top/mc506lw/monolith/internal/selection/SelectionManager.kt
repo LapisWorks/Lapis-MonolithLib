@@ -79,13 +79,13 @@ object SelectionManager {
         selection.pos1 = Vector3i(block.x, block.y, block.z)
         selection.worldName = block.world.name
         
-        player.sendMessage(I18n.translatable("chat.selection.pos1_set", "x" to block.x, "y" to block.y, "z" to block.z))
+        player.sendMessage(I18n.Message.Selection.pos1Set(block.x, block.y, block.z))
 
         if (selection.isComplete) {
             val vol = selection.getVolume()
-            player.sendMessage(I18n.translatable("chat.selection.complete", "count" to vol))
+            player.sendMessage(I18n.Message.Selection.complete(vol))
         } else {
-            player.sendMessage(I18n.translatable("chat.selection.hint_pos2"))
+            player.sendMessage(I18n.Message.Selection.hintPos2)
         }
         
         showSelectionParticles(player)
@@ -97,23 +97,23 @@ object SelectionManager {
         val selection = getSelection(player)
         
         if (selection.pos1 == null || selection.worldName == null) {
-            player.sendMessage(I18n.translatable("chat.selection.err_no_pos1"))
+            player.sendMessage(I18n.Message.Selection.errNoPos1)
             return false
         }
         
         if (block.world.name != selection.worldName) {
-            player.sendMessage(I18n.translatable("chat.selection.err_different_world"))
+            player.sendMessage(I18n.Message.Selection.errDifferentWorld)
             return false
         }
         
         selection.pos2 = Vector3i(block.x, block.y, block.z)
         
-        player.sendMessage(I18n.translatable("chat.selection.pos2_set", "x" to block.x, "y" to block.y, "z" to block.z))
+        player.sendMessage(I18n.Message.Selection.pos2Set(block.x, block.y, block.z))
         
         if (selection.isComplete) {
             val vol = selection.getVolume()
-            player.sendMessage(I18n.translatable("chat.selection.complete", "count" to vol))
-            player.sendMessage(I18n.translatable("chat.selection.hint_save"))
+            player.sendMessage(I18n.Message.Selection.complete(vol))
+            player.sendMessage(I18n.Message.Selection.hintSave)
         }
         
         showSelectionParticles(player)

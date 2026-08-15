@@ -54,7 +54,7 @@ object I18n {
                 val footerBlank = translatable("chat.command.help.footer_blank")
 
                 val sectionPreview = translatable("chat.command.help.section_preview")
-                val sectionPreviewArg = { arg: String, desc: String ->
+                val sectionPreviewArg = { arg: String, desc: Component ->
                     translatable("chat.command.help.section_preview_arg", arg("arg", arg), arg("desc", desc))
                 }
                 val sectionBuild = translatable("chat.command.help.section_build")
@@ -62,6 +62,23 @@ object I18n {
                 val sectionSite = translatable("chat.command.help.section_site")
                 val sectionEdit = translatable("chat.command.help.section_edit")
                 val sectionReload = translatable("chat.command.help.section_reload")
+
+                // /ml 帮助里各命令的描述（翻译键，替代硬编码文案）
+                val argPreviewFull = translatable("chat.command.help.arg_preview_full")
+                val argPreviewStop = translatable("chat.command.help.arg_preview_stop")
+                val argBuildHere = translatable("chat.command.help.arg_build_here")
+                val argBuildEasy = translatable("chat.command.help.arg_build_easy")
+                val argBuildPrinter = translatable("chat.command.help.arg_build_printer")
+                val argBpList = translatable("chat.command.help.arg_bp_list")
+                val argBpInfo = translatable("chat.command.help.arg_bp_info")
+                val argBpGive = translatable("chat.command.help.arg_bp_give")
+                val argSiteList = translatable("chat.command.help.arg_site_list")
+                val argSiteInfo = translatable("chat.command.help.arg_site_info")
+                val argSiteCancel = translatable("chat.command.help.arg_site_cancel")
+                val argEditWand = translatable("chat.command.help.arg_edit_wand")
+                val argEditSave = translatable("chat.command.help.arg_edit_save")
+                val argEditMerge = translatable("chat.command.help.arg_edit_merge")
+                val argProjectReloadTest = translatable("chat.command.help.arg_project_reload_test")
             }
 
             object Reload {
@@ -189,8 +206,9 @@ object I18n {
 
             object Edit {
                 val noSelection = translatable("chat.command.edit_no_selection")
-                fun saveFailed(error: String) = translatable(
-                    "chat.command.edit_save_failed", arg("error", error))
+                val saveFailedScan = translatable("chat.command.edit_save_failed_scan")
+                val saveFailedWrite = translatable("chat.command.edit_save_failed_write")
+                val errMergeFailedNoData = translatable("chat.command.err_merge_failed_no_data")
                 val wandGiven = translatable("chat.command.wand_given")
                 val wandHint = translatable("chat.command.wand_hint")
                 fun saved(name: String, count: Int) = translatable(
@@ -215,7 +233,7 @@ object I18n {
                     arg("stage", stage), arg("blocks", blocks),
                     arg("displays", displays), arg("path", path))
                 val mergeUsage = translatable("chat.command.err_merge_usage")
-                fun errMergeFailed(error: String) = translatable(
+                fun errMergeFailed(error: Component) = translatable(
                     "chat.command.err_merge_failed", arg("error", error))
                 fun merged(count: Int, path: String) = translatable(
                     "chat.command.merged",
@@ -240,7 +258,7 @@ object I18n {
 
                 fun infoTitle(blueprintId: String) = translatable(
                     "chat.command.site.info_title", arg("blueprint_id", blueprintId))
-                fun infoState(state: String) = translatable(
+                fun infoState(state: Component) = translatable(
                     "chat.command.site.info_state", arg("state", state))
                 fun infoPosition(x: Int, y: Int, z: Int) = translatable(
                     "chat.command.site.info_position",
@@ -255,6 +273,20 @@ object I18n {
 
             val permissionDenied = Common.errorPermissionDenied
             val playerOnly = Common.errorPlayerOnly
+        }
+
+        /** 选区魔杖反馈（原 SelectionManager 内联键，统一收编）。 */
+        object Selection {
+            fun pos1Set(x: Int, y: Int, z: Int) = translatable(
+                "chat.selection.pos1_set", arg("x", x), arg("y", y), arg("z", z))
+            fun pos2Set(x: Int, y: Int, z: Int) = translatable(
+                "chat.selection.pos2_set", arg("x", x), arg("y", y), arg("z", z))
+            fun complete(count: Int) = translatable(
+                "chat.selection.complete", arg("count", count))
+            val hintPos2 = translatable("chat.selection.hint_pos2")
+            val hintSave = translatable("chat.selection.hint_save")
+            val errNoPos1 = translatable("chat.selection.err_no_pos1")
+            val errDifferentWorld = translatable("chat.selection.err_different_world")
         }
 
         object BuildSite {
@@ -367,6 +399,7 @@ object I18n {
                 "chat.wrench.err_not_complete",
                 arg("rate", rate), arg("missing", missing))
             val hintContinueBuilding = translatable("chat.wrench.hint_continue_building")
+            val calibratingCompletion = translatable("chat.wrench.calibrating_completion")
             val errFinalizeFailed = translatable("chat.wrench.err_finalize_failed")
             fun errControllerNotRegistered(key: String) = translatable(
                 "chat.wrench.err_controller_not_registered", arg("key", key))

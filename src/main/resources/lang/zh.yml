@@ -109,6 +109,22 @@ chat:
       section_edit: "<yellow>/ml wand | save | merge</yellow> <gray>- MNB 编辑器 <red>[OP]</red></gray>"
       section_reload: "<yellow>/ml reload</yellow> <gray>- 重载所有结构 <red>[管理员]</red></gray>"
 
+      arg_preview_full: "预览完整结构"
+      arg_preview_stop: "停止预览"
+      arg_build_here: "一键建造"
+      arg_build_easy: "轻松放置模式"
+      arg_build_printer: "自动打印模式"
+      arg_bp_list: "列出蓝图"
+      arg_bp_info: "蓝图详情"
+      arg_bp_give: "给予蓝图物品"
+      arg_site_list: "活跃工地列表"
+      arg_site_info: "附近工地状态"
+      arg_site_cancel: "取消工地"
+      arg_edit_wand: "获取选区魔杖"
+      arg_edit_save: "保存阶段"
+      arg_edit_merge: "合并结构"
+      arg_project_reload_test: "热重载或发放完整测试工具包"
+
     # 重载
     reload_starting: "<green>[MonolithLib] 正在重载...</green>"
     reload_complete: "<green>[MonolithLib] 重载完成！共加载 %count% 个结构。</green>"
@@ -191,6 +207,8 @@ chat:
     # 编辑器专用
     edit_no_selection: "<red>请先使用选区魔杖选择区域。</red>"
     edit_save_failed: "<red>保存失败：%error%</red>"
+    edit_save_failed_scan: "<red>保存失败：扫描选区失败</red>"
+    edit_save_failed_write: "<red>保存失败：写入阶段文件失败</red>"
     edit_saved: "<green>[MonolithLib] 蓝图已保存：<white>%name%</white>（%count% 方块）</green>"
     edit_save_scaffold_done: "<green>[MonolithLib] 已记录脚手架阶段：<white>%name%</white>（%count% 方块）</green>"
     edit_save_assembled_done: "<green>[MonolithLib] 已记录成型阶段：<white>%name%</white>（%count% 方块，%entity_count% 展示实体）</green>"
@@ -203,6 +221,7 @@ chat:
     saved_with_path: "<green>[MonolithLib] 已保存 %stage% 阶段：%blocks% 个方块，%displays% 个展示实体</green> <gray>%path%</gray>"
     err_merge_usage: "<red>用法：/ml merge <id></red>"
     err_merge_failed: "<red>合并失败：%error%</red>"
+    err_merge_failed_no_data: "<red>合并失败：两阶段数据无效</red>"
     merged: "<green>[MonolithLib] 已合并 %count% 个方块：%path%</green>"
 
     project:
@@ -312,6 +331,7 @@ chat:
     err_no_blueprint: "<red>[MonolithLib] 该展位没有关联的蓝图</red>"
     err_not_complete: "<red>[MonolithLib] 尚未完成！完成度：%rate%%（缺少 %missing% 个方块）</red>"
     hint_continue_building: "<gray>继续铺设方块，所有方块就绪后再次使用扳手</gray>"
+    calibrating_completion: "<yellow>[MonolithLib] 正在校准完成度，请再次右键定型</yellow>"
     err_finalize_failed: "<red>[MonolithLib] 定型失败：无法放置控制器方块</red>"
     err_controller_not_registered: "<red>[MonolithLib] 控制器 %key% 未注册，无法成型</red>"
     hint_shift_disassemble: "<gray>请使用 Shift+右键解体已成型结构</gray>"

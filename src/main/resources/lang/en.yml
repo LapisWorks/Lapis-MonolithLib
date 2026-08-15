@@ -105,6 +105,22 @@ chat:
       section_edit: "<yellow>/ml wand | save | merge</yellow> <gray>- MNB editor <red>[OP]</red></gray>"
       section_reload: "<yellow>/ml reload</yellow> <gray>- Reload all structures <red>[Admin]</red></gray>"
 
+      arg_preview_full: "Preview the full structure"
+      arg_preview_stop: "Stop the preview"
+      arg_build_here: "Build in place"
+      arg_build_easy: "Easy-place mode"
+      arg_build_printer: "Auto printer mode"
+      arg_bp_list: "List blueprints"
+      arg_bp_info: "Blueprint details"
+      arg_bp_give: "Give a blueprint item"
+      arg_site_list: "List active sites"
+      arg_site_info: "Status of the nearest site"
+      arg_site_cancel: "Cancel the site"
+      arg_edit_wand: "Get the selection wand"
+      arg_edit_save: "Save a stage"
+      arg_edit_merge: "Merge stages"
+      arg_project_reload_test: "Hot-reload a project or grant the full test kit"
+
     # Reload
     reload_starting: "<green>[MonolithLib] Reloading...</green>"
     reload_complete: "<green>[MonolithLib] Reload complete! Loaded %count% structures.</green>"
@@ -187,6 +203,8 @@ chat:
     # Edit-specific
     edit_no_selection: "<red>Please select an area with the Selection Wand first.</red>"
     edit_save_failed: "<red>Save failed: %error%</red>"
+    edit_save_failed_scan: "<red>Save failed: could not scan the selection</red>"
+    edit_save_failed_write: "<red>Save failed: could not write the stage file</red>"
     edit_saved: "<green>[MonolithLib] Blueprint saved: <white>%name%</white> (%count% blocks)</green>"
     edit_save_scaffold_done: "<green>[MonolithLib] Scaffold stage recorded: <white>%name%</white> (%count% blocks)</green>"
     edit_save_assembled_done: "<green>[MonolithLib] Assembled stage recorded: <white>%name%</white> (%count% blocks, %entity_count% displays)</green>"
@@ -199,6 +217,7 @@ chat:
     saved_with_path: "<green>[MonolithLib] Saved %stage% stage: %blocks% blocks, %displays% display entities</green> <gray>%path%</gray>"
     err_merge_usage: "<red>Usage: /ml merge <id></red>"
     err_merge_failed: "<red>Merge failed: %error%</red>"
+    err_merge_failed_no_data: "<red>Merge failed: the two stages do not form a valid blueprint</red>"
     merged: "<green>[MonolithLib] Merged %count% blocks: %path%</green>"
 
     project:
@@ -308,6 +327,7 @@ chat:
     err_no_blueprint: "<red>[MonolithLib] This anchor has no associated blueprint</red>"
     err_not_complete: "<red>[MonolithLib] Not yet complete! Rate: %rate%% (missing %missing% blocks)</red>"
     hint_continue_building: "<gray>Continue placing blocks and use the wrench again when all blocks are ready</gray>"
+    calibrating_completion: "<yellow>[MonolithLib] Calibrating completion, right-click again to finalize</yellow>"
     err_finalize_failed: "<red>[MonolithLib] Finalization failed: could not place controller block</red>"
     err_controller_not_registered: "<red>[MonolithLib] Controller %key% is not registered; formation is blocked</red>"
     hint_shift_disassemble: "<gray>Use Shift+right-click to disassemble a formed structure</gray>"

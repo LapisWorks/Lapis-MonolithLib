@@ -46,7 +46,7 @@ object StructurePreviewManager {
             renderRadius = 64
         )
 
-        log.info("player=${player.name}", "启动预览", "blueprintId" to blueprint.id, "scaffoldBlocks" to blueprint.scaffoldShape.blocks.size, "assembledBlocks" to blueprint.assembledShape.blocks.size, "ghosts" to session.ghostBlockCount)
+        log.debug("player=${player.name}", "启动预览", "blueprintId" to blueprint.id, "scaffoldBlocks" to blueprint.scaffoldShape.blocks.size, "assembledBlocks" to blueprint.assembledShape.blocks.size, "ghosts" to session.ghostBlockCount)
 
         previewSessions[player.uniqueId] = session
         sessionCreatedAt[player.uniqueId] = System.currentTimeMillis()

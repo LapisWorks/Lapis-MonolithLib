@@ -80,7 +80,7 @@ object DisplayEntityManager {
             displayOffset
         }
 
-        log.info("site=$siteId", "开始生成虚拟视图", "entityCount" to entities.size, "controllerPos" to controllerPos, "facing" to facing, "offset" to effectiveOffset)
+        log.debug("site=$siteId", "开始生成虚拟视图", "entityCount" to entities.size, "controllerPos" to controllerPos, "facing" to facing, "offset" to effectiveOffset)
 
         val displays = mutableListOf<Display>()
         var successCount = 0
@@ -137,7 +137,7 @@ object DisplayEntityManager {
             siteDisplays[siteId] = displays
         }
 
-        log.info("site=$siteId", "虚拟视图生成完成", "success" to successCount, "failed" to failCount, "total" to entities.size)
+        log.debug("site=$siteId", "虚拟视图生成完成", "success" to successCount, "failed" to failCount, "total" to entities.size)
 
         return successCount
     }
@@ -182,7 +182,7 @@ object DisplayEntityManager {
             anchorLocation.blockZ
         )
 
-        log.info("site=$siteId", "开始生成虚拟视图", "blockCount" to assembledShape.blocks.size, "controllerPos" to controllerPos, "facing" to facing, "offset" to controllerOffset)
+        log.debug("site=$siteId", "开始生成虚拟视图", "blockCount" to assembledShape.blocks.size, "controllerPos" to controllerPos, "facing" to facing, "offset" to controllerOffset)
 
         val displays = mutableListOf<Display>()
         var successCount = 0
@@ -230,13 +230,13 @@ object DisplayEntityManager {
             siteDisplays[siteId] = displays
         }
 
-        log.info("site=$siteId", "虚拟视图生成完成", "success" to successCount, "failed" to failCount, "total" to assembledShape.blocks.size)
+        log.debug("site=$siteId", "虚拟视图生成完成", "success" to successCount, "failed" to failCount, "total" to assembledShape.blocks.size)
 
         return successCount
     }
 
     fun removeAllForSite(siteId: UUID): Int {
-        log.info("site=$siteId", "开始移除展示实体")
+        log.debug("site=$siteId", "开始移除展示实体")
         val displays = siteDisplays.remove(siteId)
 
         if (displays == null) {
@@ -260,7 +260,7 @@ object DisplayEntityManager {
             }
         }
 
-        log.info("site=$siteId", "移除完成", "removed" to removed, "total" to displays.size)
+        log.debug("site=$siteId", "移除完成", "removed" to removed, "total" to displays.size)
 
         return removed
     }

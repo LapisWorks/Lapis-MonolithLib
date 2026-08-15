@@ -80,6 +80,14 @@ class MultiblockWrench(stack: ItemStack) : RebarItem(stack), BlockInteractRebarI
         }
 
         if (rate < 1.0) {
+            // 计数器可能尚未与真实世界校准（如刚解体后的新展位：增量计数器只统计渲染循环
+            // 真正评估过的位置，未触发过全量扫描时会显示假阳性"缺少 N 个方块"）。
+            // 先触发一次异步全量校准，提示玩家再次右键定型。
+            if (!anchor.isCompletionCalibrated()) {
+                anchor.requestCompletionCheck(player)
+                player.sendMessage(I18n.Message.Wrench.calibratingCompletion)
+                return
+            }
             // missing 基于脚手架实际未匹配数（ghostData 规模），而非 assembled 方块总数
             val missing = anchor.getGhostCount() - anchor.getMatchedCount()
             player.sendMessage(I18n.Message.Wrench.errNotComplete((rate * 100).toInt(), missing))

@@ -1,6 +1,7 @@
 package top.mc506lw.monolith.feature.buildsite
 
 import io.github.pylonmc.rebar.block.BlockStorage
+import io.github.pylonmc.rebar.event.RebarBlockPlaceEvent
 import org.bukkit.Bukkit
 import top.mc506lw.monolith.common.I18n
 import org.bukkit.Location
@@ -195,10 +196,27 @@ class BuildSiteListener : Listener {
         val placedBlock = event.block
         // 区块索引 O(1) 定位覆盖该位置的工地
         val anchor = BuildSiteRegistry.findCovering(placedBlock) ?: return
-        // 即时刷新该位置的幽灵：放对 → 幽灵立刻消失；放错 → 立刻变色（所有附近玩家同步）
+        // Rebar 放置是"先设方块材质、后写注册表"两段式：BlockPlaceEvent 可能发生在
+        // 注册完成之前，立即判定会读到中间态（材质对、注册表空 → 假黄块 + 计数器误减）。
+        // 推迟 1 tick 再评估；rebar 注册完成后还有 RebarBlockPlaceEvent(MONITOR) 兜底即时刷新。
+        Bukkit.getScheduler().runTask(MonolithLib.instance, Runnable {
+            if (!placedBlock.world.isChunkLoaded(placedBlock.x shr 4, placedBlock.z shr 4)) return@Runnable
+            // 即时刷新该位置的幽灵：放对 → 幽灵立刻消失；放错 → 立刻变色（所有附近玩家同步）
+            anchor.renderPositionForPlayer(placedBlock)
+            // 异步完成度检查：0→100% 跃迁时提示一次；不阻塞主线程、不刷屏
+            anchor.requestCompletionCheck(event.player)
+        })
+    }
+
+    /**
+     * Rebar 放置完成（注册表已写入，MONITOR 保证时序）后立即重新评估该位置：
+     * 修复"先设材质、后写注册表"竞态导致的黄块冻结 / 完成度计数器卡住（假缺 1 块）。
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onRebarPlaced(event: RebarBlockPlaceEvent) {
+        val placedBlock = event.block
+        val anchor = BuildSiteRegistry.findCovering(placedBlock) ?: return
         anchor.renderPositionForPlayer(placedBlock)
-        // 异步完成度检查：0→100% 跃迁时提示一次；不阻塞主线程、不刷屏
-        anchor.requestCompletionCheck(event.player)
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)

@@ -5,6 +5,7 @@ import io.github.pylonmc.rebar.block.RebarBlock
 import io.github.pylonmc.rebar.block.context.BlockBreakContext
 import io.github.pylonmc.rebar.block.context.BlockCreateContext
 import io.github.pylonmc.rebar.block.interfaces.BlockBreakRebarBlockHandler
+import io.github.pylonmc.rebar.datatypes.RebarSerializers
 import org.bukkit.Bukkit
 import org.bukkit.Color
 import org.bukkit.Location
@@ -357,7 +358,7 @@ class BuildSiteAnchorBlock(
     }
 
     /**
-     * 解体转换全部完成时由控制器调用：scaffold 即世界状态（转换本身按蓝图 predicate 生成），
+     * 解体转换全部完成时由控制器回调：scaffold 即世界状态（转换本身按蓝图 predicate 生成），
      * 直接把完成度置为 100%，避免"解体后再定型"显示 0% 而需要敲一块方块触发校准。
      */
     fun onScaffoldConversionComplete() {
@@ -368,6 +369,9 @@ class BuildSiteAnchorBlock(
         matchedCount.set(total)
         completionCalibrated = true
         cachedCompletionRate = 1.0
+        // 世界已还原为脚手架状态：清掉陈旧幽灵显示（转换窗口期内渲染的错误颜色，
+        // 如"材质对但 PDC 没对上"的黄块），下次渲染按真实状态重建，消除计数器与显示脱节。
+        removeAllRenderings()
     }
 
     /** Direct world-position lookup used by EasyBuild and Printer without a per-site global ghost index. */
@@ -652,6 +656,9 @@ class BuildSiteAnchorBlock(
     @Volatile
     private var completionCalibrated = false
 
+    /** 供定型等路径判断：计数器是否已与真实世界同步（未校准时先触发校准再判定）。 */
+    fun isCompletionCalibrated(): Boolean = completionCalibrated
+
     fun getCompletionRate(): Double {
         val total = getGhostCount()
         return if (total == 0) 0.0 else (matchedCount.get().toDouble() / total).coerceIn(0.0, 1.0)
@@ -730,6 +737,11 @@ class BuildSiteAnchorBlock(
                         if (flags[idx]) count++
                     }
                     matchedCount.set(count)
+                    // 全量校准确认 100% 匹配：清掉可能残留的陈旧幽灵显示（计数器与显示脱节）。
+                    // 例：解体后转换窗口期内渲染的错误颜色幽灵从未被重新评估，校准前一直挂着。
+                    if (result.scanned == result.total && result.matched == result.total) {
+                        removeAllRenderings()
+                    }
                 }
                 val total = result.total
                 val rate = if (total == 0) 0.0 else result.matched.toDouble() / total
@@ -784,15 +796,94 @@ class BuildSiteAnchorBlock(
             val isRebar = entry.predicate.rebarKeyOfPredicate() != null
             val ok = entry.predicate.testMaterialOnly(b.blockData, context)
             if (!ok) {
+                // 严格修复（不是"放啥都行"）：仅当磁盘记录（区块 PDC 序列化列表）证明该位置
+                // 本来就是 expected key 的 rebar、而内存注册表把它丢了时才补注册。
+                val repaired = isRebar &&
+                    b.type == entry.previewBlockData.material &&
+                    Bukkit.isPrimaryThread() &&
+                    repairDroppedRebar(entry, b)
+                if (repaired) continue
+                // 附带"世界方块实际状态"，直接回答"为什么黄"：可能是无 PDC 的普通同材质方块，
+                // 或不同类型的 rebar（key 对不上）
+                val actualKey = top.mc506lw.monolith.feature.rebar.RebarAdapter.getRebarBlockKey(b)
+                val actualDesc = when {
+                    actualKey != null -> "Rebar $actualKey"
+                    b.type.isAir -> "空气"
+                    else -> "普通 ${b.type.name}"
+                }
+                val hint = "${entry.predicate.hint ?: entry.previewBlockData.material.name}（实际: $actualDesc）"
                 issues.add(SiteIssue(
                     entry.worldPos,
-                    entry.predicate.hint ?: entry.previewBlockData.material.name,
+                    hint,
                     isRebar,
                     entry.previewBlockData.material.name
                 ))
             }
         }
         return issues
+    }
+
+    /**
+     * 严格补注册：内存注册表丢失、但区块 PDC 磁盘记录证明该位置本来就是 [expected] rebar 的方块，
+     * 重新注册回 Rebar 内存注册表。普通方块（磁盘无记录）不处理。
+     * 每一条退出路径都打日志，便于定位失败环节。
+     */
+    private fun repairDroppedRebar(entry: GhostEntry, b: Block): Boolean {
+        val rebarKey = entry.predicate.rebarKeyOfPredicate() ?: return false
+        if (BlockStorage.isRebarBlock(b)) {
+            logger.warn("注册表恢复", "跳过：方块已在注册表", "pos" to "${b.x},${b.y},${b.z}", "key" to rebarKey.toString())
+            return false
+        }
+        val chunkKey = readChunkStoredRebarKey(b)
+        if (chunkKey != rebarKey.toString()) {
+            logger.warn(
+                "注册表恢复", "跳过：磁盘记录与预期不符", "pos" to "${b.x},${b.y},${b.z}",
+                "disk" to chunkKey, "expected" to rebarKey.toString()
+            )
+            return false
+        }
+        return try {
+            val placed = BlockStorage.placeBlock(b, rebarKey)
+            if (placed != null && BlockStorage.get(b)?.schema?.key == rebarKey) {
+                logger.warn(
+                    "注册表恢复",
+                    "磁盘证明的 rebar 已补注册回内存注册表",
+                    "pos" to "${b.x},${b.y},${b.z}",
+                    "key" to rebarKey.toString()
+                )
+                true
+            } else {
+                logger.warn(
+                    "注册表恢复", "placeBlock 返回 null（很可能被 PreRebarBlockPlaceEvent 取消）",
+                    "pos" to "${b.x},${b.y},${b.z}", "key" to rebarKey.toString()
+                )
+                false
+            }
+        } catch (e: Exception) {
+            logger.warn(
+                "注册表恢复", "placeBlock 抛异常", "pos" to "${b.x},${b.y},${b.z}",
+                "key" to rebarKey.toString(), "err" to (e.message ?: "未知")
+            )
+            false
+        }
+    }
+
+    /** 读区块 PDC 的 rebar 序列化列表中该位置存的 key（磁盘层记录），无则 null。 */
+    private fun readChunkStoredRebarKey(b: Block): String? {
+        return try {
+            val list = b.chunk.persistentDataContainer
+                .get(BlockStorage.rebarBlocksKey, BlockStorage.rebarBlocksType) ?: return null
+            val target = io.github.pylonmc.rebar.util.position.BlockPosition.asLong(b.x, b.y, b.z)
+            for (element in list) {
+                val pos = element.get(RebarBlock.rebarBlockPositionKey, RebarSerializers.LONG) ?: continue
+                if (pos == target) {
+                    return element.get(RebarBlock.rebarBlockKeyKey, RebarSerializers.NAMESPACED_KEY)?.toString()
+                }
+            }
+            null
+        } catch (e: Exception) {
+            null
+        }
     }
 
     // ========== 定型 ==========

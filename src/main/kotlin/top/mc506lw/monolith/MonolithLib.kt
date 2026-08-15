@@ -239,29 +239,29 @@ class MonolithLib : JavaPlugin(), RebarAddon {
         sender.sendMessage("")
         sender.sendMessage(H.separator)
         sender.sendMessage(H.sectionPreview)
-        sender.sendMessage(H.sectionPreviewArg("<ID>", "预览完整结构"))
-        sender.sendMessage(H.sectionPreviewArg("stop", "停止预览"))
+        sender.sendMessage(H.sectionPreviewArg("<ID>", H.argPreviewFull))
+        sender.sendMessage(H.sectionPreviewArg("stop", H.argPreviewStop))
         sender.sendMessage("")
         sender.sendMessage(H.sectionBuild)
-        sender.sendMessage(H.sectionPreviewArg("here <ID> [facing]", "一键建造"))
-        sender.sendMessage(H.sectionPreviewArg("easybuild [on|off]", "轻松放置模式"))
-        sender.sendMessage(H.sectionPreviewArg("printer [on|off]", "自动打印模式"))
+        sender.sendMessage(H.sectionPreviewArg("here <ID> [facing]", H.argBuildHere))
+        sender.sendMessage(H.sectionPreviewArg("easybuild [on|off]", H.argBuildEasy))
+        sender.sendMessage(H.sectionPreviewArg("printer [on|off]", H.argBuildPrinter))
         sender.sendMessage("")
         sender.sendMessage(H.sectionBp)
-        sender.sendMessage(H.sectionPreviewArg("list", "列出蓝图"))
-        sender.sendMessage(H.sectionPreviewArg("info <ID>", "蓝图详情"))
-        sender.sendMessage(H.sectionPreviewArg("give <ID>", "给予蓝图物品"))
+        sender.sendMessage(H.sectionPreviewArg("list", H.argBpList))
+        sender.sendMessage(H.sectionPreviewArg("info <ID>", H.argBpInfo))
+        sender.sendMessage(H.sectionPreviewArg("give <ID>", H.argBpGive))
         sender.sendMessage("")
         sender.sendMessage(H.sectionSite)
-        sender.sendMessage(H.sectionPreviewArg("list", "活跃工地列表"))
-        sender.sendMessage(H.sectionPreviewArg("info", "附近工地状态"))
-        sender.sendMessage(H.sectionPreviewArg("cancel", "取消工地"))
+        sender.sendMessage(H.sectionPreviewArg("list", H.argSiteList))
+        sender.sendMessage(H.sectionPreviewArg("info", H.argSiteInfo))
+        sender.sendMessage(H.sectionPreviewArg("cancel", H.argSiteCancel))
         sender.sendMessage("")
         sender.sendMessage(H.sectionEdit)
-        sender.sendMessage(H.sectionPreviewArg("wand", "获取选区魔杖"))
-        sender.sendMessage(H.sectionPreviewArg("save <scaffold|assembled> <id> [--no-displays]", "保存阶段"))
-        sender.sendMessage(H.sectionPreviewArg("merge <id>", "合并结构"))
-        sender.sendMessage(H.sectionPreviewArg("project reload|test <id>", "热重载或发放完整测试工具包"))
+        sender.sendMessage(H.sectionPreviewArg("wand", H.argEditWand))
+        sender.sendMessage(H.sectionPreviewArg("save <scaffold|assembled> <id> [--no-displays]", H.argEditSave))
+        sender.sendMessage(H.sectionPreviewArg("merge <id>", H.argEditMerge))
+        sender.sendMessage(H.sectionPreviewArg("project reload|test <id>", H.argProjectReloadTest))
         sender.sendMessage("")
         sender.sendMessage(H.sectionReload)
         sender.sendMessage(H.separator)
@@ -710,7 +710,7 @@ class MonolithLib : JavaPlugin(), RebarAddon {
             val pos = anchor.block.location
             val rate = (anchor.getCompletionRate() * 100).toInt()
             sender.sendMessage(I18n.Message.Command.Site.infoTitle(bpId))
-            sender.sendMessage(I18n.Message.Command.Site.infoState("建造中"))
+            sender.sendMessage(I18n.Message.Command.Site.infoState(I18n.Message.Command.Site.stateBuilding))
             sender.sendMessage(I18n.Message.Command.Site.infoPosition(pos.blockX, pos.blockY, pos.blockZ))
             sender.sendMessage(I18n.Message.Command.Site.infoFacing(anchor.facing.name))
             sender.sendMessage(I18n.Message.Command.Site.infoProgress(rate, 100, "$rate%"))
@@ -775,12 +775,12 @@ class MonolithLib : JavaPlugin(), RebarAddon {
             captureAir = stage == "scaffold"
         )
         if (scan == null) {
-            sender.sendMessage(I18n.Message.Command.Edit.saveFailed("扫描选区失败"))
+            sender.sendMessage(I18n.Message.Command.Edit.saveFailedScan)
             return
         }
         val file = ioModule.saveStage(id, buildStage, scan.shape, scan.displayEntities, scan.controllerOffset)
         if (file == null) {
-            sender.sendMessage(I18n.Message.Command.Edit.saveFailed("写入阶段文件失败"))
+            sender.sendMessage(I18n.Message.Command.Edit.saveFailedWrite)
             return
         }
         sender.sendMessage(I18n.Message.Command.Edit.savedWithPath(
@@ -802,7 +802,11 @@ class MonolithLib : JavaPlugin(), RebarAddon {
             return
         }
         val blueprint = ioModule.mergeStages(id).getOrElse { error ->
-            sender.sendMessage(I18n.Message.Command.Edit.errMergeFailed(error.message ?: "两阶段数据无效"))
+            val msg = error.message
+            sender.sendMessage(I18n.Message.Command.Edit.errMergeFailed(
+                if (msg.isNullOrBlank()) I18n.Message.Command.Edit.errMergeFailedNoData
+                else net.kyori.adventure.text.Component.text(msg)
+            ))
             return
         }
         sender.sendMessage(I18n.Message.Command.Edit.merged(blueprint.blockCount, File(worksDirectory, "$id/$id.mnb").absolutePath))

@@ -128,6 +128,10 @@ open class MNBController(
     private val hiddenBlocksOrigData = ConcurrentHashMap<Vector3i, String>()
     private val displayGroups = ConcurrentHashMap<String, MutableList<Display>>()
 
+    /** 解体转换全部完成（含补转队列排空）后的回调：由 StructureDisassembly 注入展位引用。 */
+    @Volatile
+    private var scaffoldConversionOnComplete: (() -> Unit)? = null
+
     // ---- 性能缓存：Rebar 的 MultiblockCache 会对每个方块事件调用 chunksOccupied /
     // isPartOfMultiblock / checkFormed，百万级结构绝不能每次重建 1M 项映射 ----
     @Volatile private var cachedComponents: Map<Vector3i, MultiblockComponent>? = null
@@ -458,15 +462,27 @@ open class MNBController(
      *
      * 替换改为分帧批量执行（每 tick ≤8ms，不冻结主线程）；未加载区块的方块
      * 推迟到该区块加载时由 [ScaffoldChunkLoader] 补转。
+     *
+     * [onComplete]：全部转换完成（含补转队列排空）后调用。由调用方注入展位引用——
+     * 修复原 findAt 方案的注册竞态：锚点在异步 ghost 构建回调里才注册，小结构转换
+     * 1 tick 内就完成，findAt 必然返回 null，onScaffoldConversionComplete 沦为死代码。
      */
-    fun disassembleToScaffold() {
+    fun disassembleToScaffold(onComplete: (() -> Unit)? = null) {
         val bp = blueprint ?: return
         _structureFormed = false
         unregisterFormedComponents()
         clearHeldDisplays()
         // 转换循环会覆盖 STRUCTURE_VOID 位置（scaffold 方块 / 空气），无需再走一遍 revert
         hiddenBlocksOrigData.clear()
+        scaffoldConversionOnComplete = onComplete
         scheduleScaffoldConversion(bp)
+    }
+
+    /** 触发解体转换完成回调（幂等：只触发一次）。由转换任务或补转队列排空时调用。 */
+    internal fun fireScaffoldConversionComplete() {
+        val cb = scaffoldConversionOnComplete ?: return
+        scaffoldConversionOnComplete = null
+        cb.invoke()
     }
 
     private fun scheduleScaffoldConversion(bp: Blueprint) {
@@ -515,9 +531,13 @@ open class MNBController(
                 if (!done) scheduler.runTask(MonolithLib.instance, this)
                 else {
                     // 转换全部完成：该位置工地 scaffold 已就位，直接把完成度置为 100%，
-                    // 避免"解体后再定型"因计数器未校准而显示 0%（无需敲一块方块触发校准）
-                    BuildSiteRegistry.findAt(block.world.name, block.x, block.y, block.z)
-                        ?.onScaffoldConversionComplete()
+                    // 避免"解体后再定型"因计数器未校准而显示 0%（无需敲一块方块触发校准）。
+                    // 不再走 BuildSiteRegistry.findAt —— 锚点注册在异步 ghost 构建回调里，
+                    // 小结构转换 1 tick 就完成，findAt 必然为 null（原逻辑是死代码）。
+                    // 若有未加载区块的补转队列 → 等 ScaffoldChunkLoader 排空后再触发。
+                    if (pendingScaffoldByChunk.isEmpty()) {
+                        fireScaffoldConversionComplete()
+                    }
                 }
             }
         }
@@ -582,12 +602,34 @@ open class MNBController(
                 )
             } catch (_: Exception) {}
         }
-        // 脚手架该位置是 RebarPredicate → 还原为 rebar 方块（可再次拾取/建筑）
+        // 脚手架该位置是 RebarPredicate → 还原为 rebar 方块（可再次拾取/建筑）。
+        // 严格处理：不再静默兜底成"普通方块"——那会产出材质对但无 PDC 的黄块
+        // （看起来与 rebar 一致，但 BlockStorage 读不到，predicate 永远判不匹配）。
         if (scaffoldRebarKey != null) {
             try {
                 BlockStorage.placeBlock(b, scaffoldRebarKey)
-                return
-            } catch (_: Exception) {}
+            } catch (e1: Exception) {
+                // 目标可能仍是 rebar（预检与放置检查不一致）或状态残留：先清空再重试一次
+                try {
+                    if (BlockStorage.isRebarBlock(b)) {
+                        BlockStorage.breakBlock(
+                            b,
+                            BlockBreakContext.PluginBreak(b, normallyDrops = false, shouldSetToAir = true)
+                        )
+                    } else {
+                        b.setType(Material.AIR, false)
+                    }
+                    BlockStorage.placeBlock(b, scaffoldRebarKey)
+                } catch (e2: Exception) {
+                    logger.warn { "解体转换：恢复 rebar $scaffoldRebarKey @ ($wx,$wy,$wz) 失败: ${e1.message} / ${e2.message}，保留原状（红幽灵提示玩家手动放置）" }
+                    return
+                }
+            }
+            // 放置后校验：事件可能被取消返回 null，此时不要写成普通方块
+            if (BlockStorage.get(b)?.schema?.key != scaffoldRebarKey) {
+                logger.warn { "解体转换：rebar $scaffoldRebarKey @ ($wx,$wy,$wz) 放置后校验失败（可能被事件取消）" }
+            }
+            return
         }
         val rotatedData = if (rotationSteps % 4 == 0) {
             scaffoldEntry.blockData // 无需克隆/旋转
@@ -766,6 +808,11 @@ object ScaffoldChunkLoader : Listener {
         while (pos != null) {
             controller.convertScaffoldBlockAt(bp, pos.x, pos.y, pos.z)
             pos = pending.positions.poll()
+        }
+        // 该控制器的补转队列已排空 → 触发转换完成回调（转换任务已完成且尚未触发时）
+        val hasMore = MNBController.pendingScaffoldByChunk.values.any { it.controller === controller }
+        if (!hasMore) {
+            controller.fireScaffoldConversionComplete()
         }
     }
 }

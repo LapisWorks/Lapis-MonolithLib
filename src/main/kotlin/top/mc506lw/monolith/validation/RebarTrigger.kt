@@ -8,11 +8,12 @@ import org.bukkit.Material
 import org.bukkit.block.Block
 import org.bukkit.event.block.BlockPlaceEvent
 import top.mc506lw.monolith.MonolithLib
+import top.mc506lw.monolith.common.MonolithLogger
 import java.util.concurrent.CompletableFuture
 
 object RebarTrigger {
     
-    private val logger = MonolithLib.instance.logger
+    private val logger = MonolithLogger.getLogger("RebarTrigger")
     
     fun triggerFormation(controllerLocation: Location): CompletableFuture<Boolean> {
         val future = CompletableFuture<Boolean>()
@@ -28,19 +29,16 @@ object RebarTrigger {
     fun triggerFormationSync(controllerLocation: Location): Boolean {
         val block = controllerLocation.block
         
-        logger.info("[RebarTrigger] 尝试触发多方块形成 at ${block.location}")
-        logger.info("[RebarTrigger] 方块类型: ${block.type}, BlockData: ${block.blockData.asString}")
-        
         val rebarBlock = BlockStorage.get(block)
         if (rebarBlock == null) {
-            logger.warning("[RebarTrigger] 未找到 Rebar 方块 at ${block.location}")
+            logger.warn("trigger", "未找到 Rebar 方块", "pos" to "${block.location.blockX},${block.location.blockY},${block.location.blockZ}")
             return false
         }
         
-        logger.info("[RebarTrigger] 找到 Rebar 方块: ${rebarBlock.schema.key}")
+        logger.debug("trigger", "尝试触发多方块形成", "pos" to "${block.location.blockX},${block.location.blockY},${block.location.blockZ}", "type" to block.type.name, "rebarKey" to rebarBlock.schema.key.toString())
         
         if (rebarBlock !is RebarMultiblock) {
-            logger.warning("[RebarTrigger] Rebar 方块不是 RebarMultiblock 类型")
+            logger.warn("trigger", "Rebar 方块不是 RebarMultiblock 类型", "pos" to "${block.location.blockX},${block.location.blockY},${block.location.blockZ}")
             return false
         }
         
@@ -48,11 +46,11 @@ object RebarTrigger {
             val multiblock = rebarBlock as RebarMultiblock
             
             val isFormed = multiblock.checkFormed()
-            logger.info("[RebarTrigger] checkFormed() = $isFormed")
+            logger.debug("trigger", "checkFormed 结果", "pos" to "${block.location.blockX},${block.location.blockY},${block.location.blockZ}", "formed" to isFormed)
             
             if (isFormed) {
                 if (!multiblock.isFormedAndFullyLoaded()) {
-                    logger.info("[RebarTrigger] 调用 onMultiblockFormed()")
+                    logger.debug("trigger", "调用 onMultiblockFormed", "pos" to "${block.location.blockX},${block.location.blockY},${block.location.blockZ}")
                     multiblock.onMultiblockFormed()
                 }
                 return true
@@ -60,8 +58,7 @@ object RebarTrigger {
             
             return false
         } catch (e: Exception) {
-            logger.severe("[RebarTrigger] 触发多方块形成异常: ${e.message}")
-            e.printStackTrace()
+            logger.error(e, { "触发多方块形成异常" })
             return false
         }
     }
