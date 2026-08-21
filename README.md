@@ -3,14 +3,14 @@
 </p>
 
 <div align="center">
-  <img src="https://img.shields.io/badge/Minecraft-26.1-green?style=for-the-badge&logo=minecraft" alt="Minecraft">
+  <img src="https://img.shields.io/badge/Minecraft-26.2-green?style=for-the-badge&logo=minecraft" alt="Minecraft">
   <img src="https://img.shields.io/badge/Kotlin-2.4.0-purple?style=for-the-badge&logo=kotlin" alt="Kotlin">
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License">
 </div>
 
 <p align="center">
   <a href="https://github.com/pylonmc/rebar" target="_blank">
-    <img src="https://img.shields.io/badge/生态伙伴-Rebar%200.42.0-9370DB?style=flat-square" alt="Rebar">
+    <img src="https://img.shields.io/badge/生态伙伴-Rebar%200.43.0--26.2-9370DB?style=flat-square" alt="Rebar">
   </a>
 </p>
 
@@ -96,6 +96,28 @@ MonolithLib 不绕过 Rebar 的检测——把生命周期切成两段：
 ---
 
 ## 🚀 快速开始（开发者视角）
+
+### 0. 环境与依赖
+
+| 项 | 版本 |
+|---|---|
+| Minecraft | **26.2** |
+| Rebar | **0.43.0-26.2**（[JitPack](https://jitpack.io/#pylonmc/rebar)） |
+| JDK | 25 |
+
+附属插件接入方式：
+
+```kotlin
+repositories {
+    maven("https://repo.papermc.io/repository/maven-public/")
+    maven("https://jitpack.io")
+}
+
+dependencies {
+    compileOnly("io.github.pylonmc:rebar:0.43.0-26.2")
+    compileOnly(files("libs/MonolithLib-1.2.0-all.jar")) // 或发布到私有仓库
+}
+```
 
 ### 1. 注册蓝图
 

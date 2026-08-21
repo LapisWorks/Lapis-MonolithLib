@@ -1,6 +1,6 @@
 plugins {
     kotlin("jvm") version "2.4.0-Beta1"
-    id("com.gradleup.shadow") version "8.3.2"
+    id("com.gradleup.shadow") version "9.0.0"
     id("xyz.jpenilla.run-paper") version "2.3.1"
 }
 
@@ -24,6 +24,9 @@ repositories {
     }
     maven("https://repo.metamechanists.org/releases") {
         name = "MetaMechanists Repository"
+    }
+    maven("https://jitpack.io") {
+        name = "JitPack"
     }
 }
 

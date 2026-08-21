@@ -53,7 +53,7 @@ class MonolithLib : JavaPlugin(), RebarAddon {
     }
 
     override val javaPlugin: JavaPlugin get() = this
-    override val languages: Set<Locale> = setOf(Locale.ENGLISH, Locale.CHINESE)
+    override val defaultLanguage: Locale = Locale.ENGLISH
     override val material: Material = Material.STRUCTURE_BLOCK
 
     private lateinit var api: BlueprintAPI
